@@ -7,7 +7,7 @@ from typing import List, Optional, Dict, Any
 from fastapi import APIRouter, UploadFile, File, Form, Request, HTTPException
 from pydantic import BaseModel, Field
 
-import fitz  # PyMuPDF
+import pymupdf as fitz
 
 from ..services.gemini_extractor import extract_document_data, CONFIDENCE_THRESHOLD
 from ..services.unit_normalizer import normalize_unit_to_mg_kg, evaluate_blq_mrl_trap

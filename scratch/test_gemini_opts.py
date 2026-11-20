@@ -4,7 +4,7 @@ from pathlib import Path
 from pydantic import BaseModel, Field
 from typing import List, Optional
 
-load_dotenv("c:/Users/ksaia/Downloads/clearspec-ai/.env")
+load_dotenv()
 key = os.getenv("GEMINI_API_KEY")
 
 from google import genai

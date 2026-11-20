@@ -9,7 +9,7 @@ from typing import Dict, Any, List, Optional
 from dotenv import load_dotenv
 from pydantic import BaseModel, Field
 
-import fitz  # PyMuPDF
+import pymupdf as fitz
 
 # Load root .env
 ROOT_DIR = Path(__file__).resolve().parent.parent.parent.parent

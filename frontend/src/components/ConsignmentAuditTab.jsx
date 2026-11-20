@@ -1,8 +1,9 @@
 import React, { useState, useRef, useCallback } from 'react';
 import {
   ShieldX, ShieldCheck, AlertTriangle, Eye, Copy, CheckCheck,
-  FileText, Upload, ChevronRight, Loader2, ZoomIn, X
+  FileText, Upload, ChevronRight, Loader2, ZoomIn, X, Sparkles, Download
 } from 'lucide-react';
+import LiveVoiceWidget from './LiveVoiceWidget';
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Constants
@@ -334,6 +335,121 @@ function BilingualNotice({ notice }) {
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
+// Nano Banana 2.1 WhatsApp Visual Fix Card Section
+// ─────────────────────────────────────────────────────────────────────────────
+function VisualFixCardSection({ auditResult, findings }) {
+  const [visualCard, setVisualCard] = useState(null);
+  const [generating, setGenerating] = useState(false);
+  const [error, setError] = useState(null);
+
+  const handleGenerate = async () => {
+    setGenerating(true);
+    setError(null);
+    try {
+      const critical = (findings || [])
+        .filter((f) => f.compliance_status?.includes('CRITICAL') || f.blq_trap_triggered)
+        .map((f) => `${f.name}: ${f.reported_reading || 'BLQ'} (MRL: ${f.eu_mrl_mg_kg} mg/kg)`);
+
+      const res = await fetch('/api/v1/visual-card/generate', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          consignment_id: 'EXP/2026/GNT-104',
+          batch_id: auditResult?.consignment_batch || 'GNT-24A',
+          total_risk_inr: auditResult?.financial_risk?.total_estimated_risk_inr || 5246000,
+          critical_findings: critical.length ? critical : [
+            '450 kg Net Weight Discrepancy (18,000 vs 17,550 kg)',
+            'Tricyclazole BLQ Trap: LOQ 0.05 > EU MRL 0.01 mg/kg',
+            'Aflatoxin B1: 8.5 µg/kg exceeds 5.0 µg/kg threshold'
+          ],
+          language: 'en'
+        }),
+      });
+      if (!res.ok) throw new Error(`HTTP error ${res.status}`);
+      const data = await res.json();
+      setVisualCard(data);
+    } catch (err) {
+      setError(err.message);
+    } finally {
+      setGenerating(false);
+    }
+  };
+
+  return (
+    <div className="rounded-lg border border-slate-700 bg-slate-800/50 p-4 space-y-3">
+      <div className="flex flex-wrap items-center justify-between gap-2">
+        <div className="flex items-center gap-2">
+          <Sparkles className="w-4 h-4 text-amber-400" />
+          <span className="text-sm font-bold text-white">WhatsApp Visual Fix Card</span>
+          <span className="text-[10px] font-mono bg-amber-950/70 text-amber-300 border border-amber-600/50 px-2 py-0.5 rounded-full">
+            Nano Banana 2.1
+          </span>
+        </div>
+        <button
+          onClick={handleGenerate}
+          disabled={generating}
+          className="flex items-center gap-1.5 text-xs bg-amber-500 hover:bg-amber-400 disabled:opacity-60 text-slate-950 font-bold px-3 py-1.5 rounded-md transition-all shadow-md shadow-amber-500/20"
+        >
+          {generating ? (
+            <>
+              <Loader2 className="w-3.5 h-3.5 animate-spin" />
+              Generating Card…
+            </>
+          ) : (
+            <>
+              <Sparkles className="w-3.5 h-3.5" />
+              Generate WhatsApp Visual Fix Card (Nano Banana 2.1)
+            </>
+          )}
+        </button>
+      </div>
+
+      <p className="text-xs text-slate-400 leading-relaxed">
+        Renders a high-contrast 16:9 infographic card summarizing exact hold reasons, weight discrepancies, and chemical BLQ violations formatted for instant WhatsApp dispatch to the Guntur supplier.
+      </p>
+
+      {error && <div className="text-xs text-red-400 bg-red-950/50 border border-red-800 rounded p-2">⚠ {error}</div>}
+
+      {visualCard && (
+        <div className="space-y-3 pt-2">
+          <div className="relative rounded-lg overflow-hidden border border-slate-700 bg-slate-950 group">
+            <img
+              src={`data:image/png;base64,${visualCard.image_base64}`}
+              alt="Nano Banana 2.1 Remediation Card"
+              className="w-full h-auto object-cover rounded"
+            />
+            <div className="absolute top-2 right-2 flex items-center gap-2">
+              <span className="text-[10px] font-semibold px-2 py-1 rounded bg-black/80 text-emerald-300 border border-emerald-500/40 backdrop-blur-sm">
+                Powered by Nano Banana 2.1
+              </span>
+              {visualCard.is_fallback && (
+                <span className="text-[10px] font-semibold px-2 py-1 rounded bg-black/80 text-amber-300 border border-amber-500/40 backdrop-blur-sm">
+                  Stage-Safe Local Engine
+                </span>
+              )}
+            </div>
+          </div>
+
+          <div className="flex items-center justify-between">
+            <span className="text-[11px] text-slate-400">
+              Model: <strong className="text-slate-300">{visualCard.model_used}</strong> &bull; Format: 16:9 High-DPI PNG
+            </span>
+            <a
+              href={`data:image/png;base64,${visualCard.image_base64}`}
+              download={`ClearSpec_Remediation_Card_${auditResult?.consignment_batch || 'GNT-24A'}.png`}
+              className="flex items-center gap-1.5 text-xs bg-slate-700 hover:bg-slate-600 text-white font-medium px-3 py-1.5 rounded transition-colors"
+            >
+              <Download className="w-3.5 h-3.5 text-emerald-400" />
+              Download PNG
+            </a>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
 // Drag-and-Drop uploader
 // ─────────────────────────────────────────────────────────────────────────────
 function DragDropUploader({ onFiles }) {
@@ -487,6 +603,11 @@ export default function ConsignmentAuditTab() {
         </div>
       )}
 
+      {/* ── Gemini 3.8 Live Bilingual Voice Assistant ── */}
+      {auditResult && (
+        <LiveVoiceWidget auditResult={auditResult} />
+      )}
+
       {/* ── Main Split Pane ── */}
       {auditResult ? (
         <div className="flex gap-4 flex-1 min-h-0" style={{ minHeight: '520px' }}>
@@ -595,6 +716,9 @@ export default function ConsignmentAuditTab() {
 
             {/* Bilingual Notice */}
             <BilingualNotice notice={auditResult.bilingual_supplier_notice} />
+
+            {/* Nano Banana 2.1 WhatsApp Visual Fix Card */}
+            <VisualFixCardSection auditResult={auditResult} findings={findings} />
           </div>
         </div>
       ) : (

@@ -2,7 +2,7 @@
 import io
 from pathlib import Path
 
-import fitz  # PyMuPDF
+import pymupdf as fitz
 from fastapi import APIRouter, HTTPException
 from fastapi.responses import FileResponse, Response
 

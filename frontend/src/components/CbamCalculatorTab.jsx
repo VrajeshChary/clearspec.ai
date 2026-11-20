@@ -94,7 +94,7 @@ export default function CbamCalculatorTab() {
       <div>
         <h2 className="text-2xl font-bold text-white tracking-tight">2026 EU CBAM Compliance Calculator</h2>
         <p className="text-slate-400 mt-1">
-          Enforces definitive regime requirements under <span className="text-rose-400 font-semibold">Regulation (EU) 2023/956</span> for steel fastener exports (CN 731815), blocking declarations when raw precursor wire rod (CN 7213) lacks verified Specific Embedded Emissions ($t\text{CO}_2e/t$).
+          Enforces definitive regime requirements under <span className="text-rose-400 font-semibold">Regulation (EU) 2023/956</span> for steel fastener exports (CN 731815), blocking declarations when raw precursor wire rod (CN 7213) lacks verified Specific Embedded Emissions (tCO₂e/t).
         </p>
       </div>
 
