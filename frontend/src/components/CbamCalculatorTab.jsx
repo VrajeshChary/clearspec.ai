@@ -30,7 +30,7 @@ const SCENARIOS = [
   {
     id: 'compliant',
     label: 'Scenario C: 2026 Certified Compliant (Pass)',
-    desc: 'Verified precursor SEE (1.85 tCO2e/t) with accredited verifier (TÜV SÜD Europe)',
+    desc: 'Verified precursor SEE (1.95 tCO2e/t) with accredited verifier (TÜV SÜD Europe)',
     status: 'PASS'
   }
 ];
@@ -115,7 +115,7 @@ export default function CbamCalculatorTab() {
       setIndirectEmissions('0.9');
       setPrecursorCn('7213');
       setPrecursorTonnes('10.4');
-      setPrecursorSee('1.85');
+      setPrecursorSee('1.95');
       setIsVerified(true);
       setVerifierBody('TÜV SÜD Europe (NAB-EU/2026)');
       setAssessment(null);

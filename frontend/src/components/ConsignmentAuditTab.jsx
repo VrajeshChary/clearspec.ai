@@ -936,20 +936,29 @@ export default function ConsignmentAuditTab({ onAuditLoaded }) {
                         <td className="py-2.5 px-2">
                           <span className={`inline-flex items-center space-x-1 px-2 py-0.5 rounded text-[10px] font-bold ${style.badge}`}>
                             <span className={`w-1.5 h-1.5 rounded-full ${style.dot}`} />
-                            <span>{isTrap ? 'BLQ TRAP' : f.compliance_status}</span>
+                            <span>
+                              {isTrap
+                                ? 'BLQ TRAP'
+                                : f.review_reason?.startsWith('VERIFIED PASS')
+                                ? 'VERIFIED PASS ✓'
+                                : f.review_reason?.startsWith('CRITICAL_BLOCK')
+                                ? 'VERIFIED FAIL ✗'
+                                : f.compliance_status}
+                            </span>
                           </span>
                         </td>
                         <td className="py-2.5 px-2 text-right">
-                          {isReview ? (
+                          {isReview || f.review_reason || f.name === 'Chlorpyrifos' ? (
                             <button
                               onClick={(e) => {
                                 e.stopPropagation();
                                 setZoomFinding(f);
                               }}
                               className="keycap-btn px-2 py-1 text-[10px] text-amber-300 hover:text-white flex items-center space-x-1 ml-auto"
+                              title="Open 300% Forensic Stamp Magnifier"
                             >
                               <ZoomIn className="w-3 h-3 text-amber-400" />
-                              <span>Inspect Stamp</span>
+                              <span>{f.review_reason ? 'Re-Inspect' : 'Inspect Stamp'}</span>
                             </button>
                           ) : (
                             <button
