@@ -1,0 +1,99 @@
+{
+  "Commercial_Invoice_104.pdf": {
+    "document_type": "COMMERCIAL_INVOICE",
+    "invoice_number": "EXP/2026/GNT-104",
+    "invoice_date": "2026-10-15",
+    "exporter": "KRISHNA SPICES & AGRO EXPORTS LTD., Guntur, AP, India",
+    "importer": "ROTTERDAM EURO-SPICE LOGISTICS B.V., Rotterdam, Netherlands",
+    "hs_code": "09042211",
+    "commodity_description": "Indian Dried Red Crushed Chili Flakes",
+    "batch_numbers": ["GNT-24A"],
+    "declared_net_weight_kg": 18500.0,
+    "declared_gross_weight_kg": 19200.0,
+    "invoice_value_eur": 74000.0,
+    "invoice_value_inr": 6660000.0,
+    "port_of_loading": "Chennai Sea (INMAA1)",
+    "port_of_discharge": "Port of Rotterdam, Netherlands",
+    "vessel": "MSC GULSUN / 2604W"
+  },
+  "Packing_List_104.pdf": {
+    "document_type": "PACKING_LIST",
+    "packing_list_ref": "PL/2026/GNT-104",
+    "linked_invoice": "EXP/2026/GNT-104",
+    "container_number": "MSKU-9182301",
+    "seal_number": "EIC-IND-881920",
+    "hs_code": "09042211",
+    "batch_numbers": ["GNT-24A"],
+    "total_packages": 722,
+    "total_net_weight_kg": 18050.0,
+    "total_gross_weight_kg": 18750.0,
+    "short_shipped_packages": 18,
+    "discrepancy_vs_invoice_kg": -450.0
+  },
+  "NABL_Lab_Report_104.pdf": {
+    "document_type": "LAB_REPORT",
+    "lab_name": "Agri-Test Analytical Laboratories India Pvt. Ltd.",
+    "accreditation": "NABL (ISO/IEC 17025:2017) TC-8492 / Spices Board / EIC",
+    "report_id": "NABL/GNT/2026/104-R",
+    "sample_name": "Red Chili Flakes",
+    "batch_number": "GNT-24A",
+    "declared_hs_code": "09042211",
+    "analytes": [
+      {
+        "name": "Tricyclazole",
+        "cas_number": "41814-78-2",
+        "category": "Fungicide residue",
+        "test_method": "LC-MS/MS",
+        "is_below_loq": true,
+        "reported_value": null,
+        "lab_loq_value": 0.05,
+        "unit": "mg/kg",
+        "confidence_score": 0.98,
+        "bounding_box": [260, 59, 295, 941],
+        "notes": "Reported as BLQ with lab LOQ 0.05 mg/kg"
+      },
+      {
+        "name": "Aflatoxin B1",
+        "cas_number": "1162-65-8",
+        "category": "Mycotoxin contaminant",
+        "test_method": "HPLC-FLD",
+        "is_below_loq": false,
+        "reported_value": 8.5,
+        "lab_loq_value": 1.0,
+        "unit": "ug/kg",
+        "confidence_score": 0.97,
+        "bounding_box": [295, 59, 330, 941],
+        "notes": "Quantified at 8.5 ug/kg (0.0085 mg/kg)"
+      },
+      {
+        "name": "Chlorpyrifos",
+        "cas_number": "2921-88-2",
+        "category": "Organophosphate pesticide",
+        "test_method": "GC-MS/MS",
+        "is_below_loq": false,
+        "reported_value": 0.008,
+        "lab_loq_value": 0.005,
+        "unit": "mg/kg",
+        "confidence_score": 0.68,
+        "bounding_box": [330, 59, 365, 941],
+        "partially_occluded": true,
+        "occlusion_type": "blue_ink_qa_stamp",
+        "notes": "Partially occluded under NABL/EIC semi-transparent blue ink inspection stamp. Confidence 0.68 < 0.85 threshold, requires human review."
+      },
+      {
+        "name": "Ethylene Oxide (EtO)",
+        "cas_number": "75-21-8",
+        "category": "Sterilant / Fumigant",
+        "test_method": "GC-MS/MS",
+        "is_below_loq": true,
+        "reported_value": null,
+        "lab_loq_value": 0.01,
+        "unit": "mg/kg",
+        "confidence_score": 0.96,
+        "bounding_box": [365, 59, 400, 941],
+        "notes": "BLQ with sensitive LOQ 0.01 mg/kg"
+      }
+    ],
+    "cbam_precursors": []
+  }
+}

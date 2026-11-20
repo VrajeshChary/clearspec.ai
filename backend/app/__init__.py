@@ -1,0 +1,1 @@
+# ClearSpec AI Backend Application
