@@ -29,8 +29,9 @@ COPY backend/ /app/backend/
 # Copy compiled frontend from Stage 1
 COPY --from=frontend-builder /app/frontend/dist /app/frontend/dist
 
-# Pre-generate sample PDF audit packets so they are pre-baked in the image
-RUN python /app/backend/app/generate_samples.py
+# Pre-generate sample PDF audit packets & initialize statutory SQLite database
+RUN python /app/backend/app/generate_samples.py && \
+    python -c "from backend.app.services.statutory_db import init_statutory_database; init_statutory_database()"
 
 # Expose port (default 8080 for Cloud Run)
 EXPOSE 8080
