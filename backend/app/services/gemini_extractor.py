@@ -315,7 +315,14 @@ def extract_document_data(
             from google import genai
             from google.genai import types
 
-            client = genai.Client(api_key=GEMINI_API_KEY, http_options={"api_version": "v1beta"})
+            client = genai.Client(
+                api_key=GEMINI_API_KEY,
+                http_options=types.HttpOptions(
+                    api_version="v1beta",
+                    timeout=10000,
+                    retry_options=types.HttpRetryOptions(attempts=1)
+                )
+            )
             pdf_part = types.Part.from_bytes(data=file_bytes, mime_type=mime_type or "application/pdf")
 
             prompt = f"""You are an expert customs consignment document auditor for EU trade compliance.
@@ -357,64 +364,69 @@ Return strictly valid JSON matching this schema:
 }}
 Do NOT output markdown backticks or explanations. Output pure JSON only.
 """
-            res = client.models.generate_content(
-                model="gemini-3.8-flash",
-                contents=[pdf_part, prompt],
-                config=types.GenerateContentConfig(
-                    response_mime_type="application/json",
-                    temperature=0.0
-                )
-            )
+            models_to_try = ["gemini-3.8-flash", "gemini-3.5-flash", "gemini-3.5-flash-lite", "gemini-3.1-flash-lite"]
+            for m_candidate in models_to_try:
+                try:
+                    res = client.models.generate_content(
+                        model=m_candidate,
+                        contents=[pdf_part, prompt],
+                        config=types.GenerateContentConfig(
+                            response_mime_type="application/json",
+                            temperature=0.0
+                        )
+                    )
 
-            if res and res.text:
-                text_out = res.text.strip()
-                if text_out.startswith("```"):
-                    text_out = text_out.split("\n", 1)[1].rsplit("```", 1)[0].strip()
+                    if res and res.text:
+                        text_out = res.text.strip()
+                        if text_out.startswith("```"):
+                            text_out = text_out.split("\n", 1)[1].rsplit("```", 1)[0].strip()
 
-                parsed = json.loads(text_out)
-                parsed["_source"] = "GEMINI_3.8_FLASH_LIVE"
-                parsed["_filename"] = clean_name
-                parsed["_sha256"] = compute_sha256(file_bytes)
+                        parsed = json.loads(text_out)
+                        parsed["_source"] = f"{m_candidate.upper().replace('-', '_')}_LIVE"
+                        parsed["_filename"] = clean_name
+                        parsed["_sha256"] = compute_sha256(file_bytes)
 
-                # Dynamically compute bounding boxes from real PDF via PyMuPDF
-                doc = fitz.open(stream=file_bytes, filetype="pdf")
-                norm_rows = []
-                c_rows = parsed.get("chemical_rows") or parsed.get("analytes") or []
-                for r in c_rows:
-                    name = r.get("analyte_name") or r.get("name") or "Unknown"
-                    num = r.get("numeric_value") if r.get("numeric_value") is not None else r.get("reported_value")
-                    conf = r.get("confidence") if r.get("confidence") is not None else 0.95
+                        # Dynamically compute bounding boxes from real PDF via PyMuPDF
+                        doc = fitz.open(stream=file_bytes, filetype="pdf")
+                        norm_rows = []
+                        c_rows = parsed.get("chemical_rows") or parsed.get("analytes") or []
+                        for r in c_rows:
+                            name = r.get("analyte_name") or r.get("name") or "Unknown"
+                            num = r.get("numeric_value") if r.get("numeric_value") is not None else r.get("reported_value")
+                            conf = r.get("confidence") if r.get("confidence") is not None else 0.95
 
-                    # Dynamically anchor bounding box to real PDF text
-                    box = find_bounding_box_in_doc(doc, name, num)
-                    if not box:
-                        match_b = next((b for b in baseline.get("chemical_rows", []) if name.lower() in b.get("name", "").lower()), None)
-                        box = match_b.get("bbox") if match_b else [300, 50, 350, 950]
+                            # Dynamically anchor bounding box to real PDF text
+                            box = find_bounding_box_in_doc(doc, name, num)
+                            if not box:
+                                match_b = next((b for b in baseline.get("chemical_rows", []) if name.lower() in b.get("name", "").lower()), None)
+                                box = match_b.get("bbox") if match_b else [300, 50, 350, 950]
 
-                    norm_rows.append({
-                        **r,
-                        "analyte_name": name,
-                        "name": name,
-                        "numeric_value": num,
-                        "reported_value": num,
-                        "confidence": conf,
-                        "confidence_score": conf,
-                        "bbox": box,
-                        "bounding_box": box,
-                    })
-                doc.close()
+                            norm_rows.append({
+                                **r,
+                                "analyte_name": name,
+                                "name": name,
+                                "numeric_value": num,
+                                "reported_value": num,
+                                "confidence": conf,
+                                "confidence_score": conf,
+                                "bbox": box,
+                                "bounding_box": box,
+                            })
+                        doc.close()
 
-                if not norm_rows and baseline["chemical_rows"]:
-                    norm_rows = baseline["chemical_rows"]
+                        if not norm_rows and baseline["chemical_rows"]:
+                            norm_rows = baseline["chemical_rows"]
 
-                parsed["chemical_rows"] = norm_rows
-                parsed["analytes"] = norm_rows
-                if not parsed.get("declared_net_weight_kg") and baseline.get("declared_net_weight_kg"):
-                    parsed["declared_net_weight_kg"] = baseline["declared_net_weight_kg"]
-                if not parsed.get("hs_code") and baseline.get("hs_code"):
-                    parsed["hs_code"] = baseline["hs_code"]
+                        parsed["chemical_rows"] = norm_rows
+                        parsed["analytes"] = norm_rows
+                        if not parsed.get("declared_net_weight_kg") and baseline.get("declared_net_weight_kg"):
+                            parsed["declared_net_weight_kg"] = baseline["declared_net_weight_kg"]
+                        if not parsed.get("hs_code") and baseline.get("hs_code"):
+                            parsed["hs_code"] = baseline["hs_code"]
 
-                return parsed
+                        return parsed
+                except Exception:
+                    continue
         except Exception:
             pass
 

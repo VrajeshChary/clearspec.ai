@@ -159,8 +159,8 @@ async def audit_consignment(
     if not lab_doc and documents_data:
         lab_doc = documents_data[-1] if len(documents_data) > 1 else documents_data[0]
 
-    inv_net_wt = invoice_doc.get("declared_net_weight_kg") if invoice_doc else None
-    pack_net_wt = packing_doc.get("total_net_weight_kg") if packing_doc else None
+    inv_net_wt = invoice_doc.get("declared_net_weight_kg") or invoice_doc.get("total_net_weight_kg") if invoice_doc else None
+    pack_net_wt = packing_doc.get("total_net_weight_kg") or packing_doc.get("declared_net_weight_kg") if packing_doc else None
     raw_hs = (invoice_doc or {}).get("hs_code") or (lab_doc or {}).get("declared_hs_code") or "09042211"
     batch_num = ((lab_doc or {}).get("batch_number") or 
                  ((invoice_doc or {}).get("batch_numbers") or ["GNT-24A"])[0])

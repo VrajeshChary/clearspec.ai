@@ -67,22 +67,33 @@ async def ask_text_fallback(payload: AskTextRequest):
             from google import genai
             from google.genai import types
 
-            client = genai.Client(api_key=GEMINI_API_KEY, http_options={"api_version": "v1beta"})
+            client = genai.Client(
+                api_key=GEMINI_API_KEY,
+                http_options=types.HttpOptions(
+                    api_version="v1beta",
+                    timeout=10000,
+                    retry_options=types.HttpRetryOptions(attempts=1)
+                )
+            )
             config = types.GenerateContentConfig(
                 system_instruction=sys_prompt,
                 temperature=0.2,
             )
-            res = await client.aio.models.generate_content(
-                model="gemini-3.8-flash",
-                contents=payload.question,
-                config=config,
-            )
-            if res and res.text:
-                return AskTextResponse(
-                    answer=res.text.strip(),
-                    model_used="gemini-3.8-flash",
-                    language=payload.language or "en"
-                )
+            for m_candidate in ["gemini-3.8-flash", "gemini-3.5-flash", "gemini-3.5-flash-lite", "gemini-3.1-flash-lite"]:
+                try:
+                    res = await client.aio.models.generate_content(
+                        model=m_candidate,
+                        contents=payload.question,
+                        config=config,
+                    )
+                    if res and res.text:
+                        return AskTextResponse(
+                            answer=res.text.strip(),
+                            model_used=m_candidate,
+                            language=payload.language or "en"
+                        )
+                except Exception:
+                    continue
         except Exception:
             pass
 
