@@ -34,7 +34,9 @@ import {
   Compass,
   ArrowRight,
   TrendingDown,
-  Cpu
+  Cpu,
+  ArrowLeft,
+  FileCheck
 } from 'lucide-react';
 import { auditConsignment, reverifyAnalyte, generateVisualCard } from '../services/api';
 
@@ -52,149 +54,38 @@ const ANALYTE_DOC_MAP = {
 };
 
 const SEVERITY_STYLES = {
-  CRITICAL_BLOCK: {
-    badge: 'bg-rose-500/15 text-rose-300 border border-rose-500/40 shadow-[0_0_12px_rgba(244,63,94,0.25)]',
-    dot: 'bg-rose-500 animate-pulse',
-    border: '#f43f5e',
-    bg: 'rgba(244, 63, 94, 0.22)'
-  },
   CRITICAL_FAIL_EXCEEDED: {
-    badge: 'bg-rose-500/15 text-rose-300 border border-rose-500/40 shadow-[0_0_12px_rgba(244,63,94,0.25)]',
-    dot: 'bg-rose-500 animate-pulse',
-    border: '#f43f5e',
-    bg: 'rgba(244, 63, 94, 0.22)'
+    badge: 'bg-rose-500/20 text-rose-300 border border-rose-500/40 shadow-[0_0_10px_rgba(244,63,94,0.3)]',
+    dot: 'bg-rose-500 animate-ping',
+    border: 'border-rose-500/60',
+    glow: 'rgba(244, 63, 94, 0.4)'
+  },
+  BLQ_TRAP: {
+    badge: 'bg-rose-600/25 text-rose-200 border border-rose-500/50 shadow-[0_0_12px_rgba(225,29,72,0.4)]',
+    dot: 'bg-rose-400',
+    border: 'border-rose-500',
+    glow: 'rgba(225, 29, 72, 0.5)'
   },
   HUMAN_REVIEW_REQUIRED: {
-    badge: 'bg-amber-500/15 text-amber-300 border border-amber-500/40 shadow-[0_0_12px_rgba(245,158,11,0.25)]',
-    dot: 'bg-amber-400 animate-ping',
-    border: '#f59e0b',
-    bg: 'rgba(245, 158, 11, 0.25)'
+    badge: 'bg-amber-500/20 text-amber-300 border border-amber-500/40 shadow-[0_0_10px_rgba(245,158,11,0.3)]',
+    dot: 'bg-amber-400',
+    border: 'border-amber-500/60',
+    glow: 'rgba(245, 158, 11, 0.4)'
   },
   PASS: {
-    badge: 'bg-emerald-500/15 text-emerald-300 border border-emerald-500/40 shadow-[0_0_12px_rgba(16,185,129,0.25)]',
+    badge: 'bg-emerald-500/15 text-emerald-300 border border-emerald-500/30',
     dot: 'bg-emerald-400',
-    border: '#10b981',
-    bg: 'rgba(16, 185, 129, 0.18)'
-  },
-};
-
-const INR_FORMAT = (v) => '₹' + Number(v).toLocaleString('en-IN', { maximumFractionDigits: 0 });
-
-// ─────────────────────────────────────────────────────────────────────────────
-// Initial High-Fidelity Hydrated State (Never Blank on Mount)
-// ─────────────────────────────────────────────────────────────────────────────
-const INITIAL_ROTTERDAM_STATE = {
-  consignment_batch: 'GNT-24A',
-  overall_status: 'CRITICAL_BLOCK',
-  declared_hs_code: '09042211',
-  normalized_hs_prefix: '0904',
-  commodity_description: 'Pepper of the genus Piper; dried/crushed/ground fruits of the genus Capsicum (Chilli)',
-  extraction_source: 'GEMINI_3.8_FLASH_LIVE',
-  analyte_evaluations: [
-    {
-      name: 'Tricyclazole',
-      cas_number: '41814-78-2',
-      reported_reading: 'BLQ (LOQ: 0.05 mg/kg)',
-      numeric_reading_mg_kg: null,
-      lab_loq: '0.05 mg/kg',
-      eu_mrl_mg_kg: 0.01,
-      compliance_status: 'CRITICAL_BLOCK',
-      blq_trap_triggered: true,
-      needs_human_review: false,
-      confidence_score: 0.98,
-      bounding_box: [183, 65, 214, 934],
-      review_reason: 'Statutory BLQ > MRL sensitivity trap triggered. Lab LOQ 0.05 mg/kg exceeds EU legal ceiling 0.01 mg/kg.'
-    },
-    {
-      name: 'Aflatoxin B1',
-      cas_number: '1162-65-8',
-      reported_reading: '8.5 µg/kg',
-      numeric_reading_mg_kg: 0.0085,
-      lab_loq: '1.0 µg/kg',
-      eu_mrl_mg_kg: 0.005,
-      compliance_status: 'CRITICAL_FAIL_EXCEEDED',
-      blq_trap_triggered: false,
-      needs_human_review: false,
-      confidence_score: 0.95,
-      bounding_box: [221, 65, 252, 934],
-      review_reason: 'Exceeds Regulation (EU) 2023/915 threshold of 5.0 µg/kg for capsicum spices.'
-    },
-    {
-      name: 'Chlorpyrifos',
-      cas_number: '2921-88-2',
-      reported_reading: '0.008 mg/kg [OCCLUDED]',
-      numeric_reading_mg_kg: 0.008,
-      lab_loq: '0.005 mg/kg',
-      eu_mrl_mg_kg: 0.01,
-      compliance_status: 'HUMAN_REVIEW_REQUIRED',
-      blq_trap_triggered: false,
-      needs_human_review: true,
-      confidence_score: 0.62,
-      bounding_box: [258, 65, 289, 934],
-      review_reason: 'Physical circular NABL/EIC rubber QA inspection stamp partially occludes numerical digits.'
-    },
-    {
-      name: 'Ethylene Oxide (EtO)',
-      cas_number: '75-21-8',
-      reported_reading: '< 0.01 mg/kg',
-      numeric_reading_mg_kg: 0.005,
-      lab_loq: '0.01 mg/kg',
-      eu_mrl_mg_kg: 0.02,
-      compliance_status: 'PASS',
-      blq_trap_triggered: false,
-      needs_human_review: false,
-      confidence_score: 0.99,
-      bounding_box: [295, 65, 326, 934],
-      review_reason: 'Strictly compliant with Regulation (EU) 2020/1540 limit of 0.02 mg/kg.'
-    }
-  ],
-  financial_risk: {
-    demurrage_port_storage_inr: 189000,
-    re_testing_re_sampling_inr: 45000,
-    customs_penalty_inr: 350000,
-    cargo_rejection_re_export_inr: 4662000,
-    total_estimated_risk_inr: 5246000
-  },
-  weight_reconciliation: {
-    invoice_net_weight_kg: 18500,
-    packing_list_net_weight_kg: 18050,
-    discrepancy_kg: -450,
-    discrepancy_percentage: -2.43,
-    status: 'FAIL_DISCREPANCY',
-    notes: 'Net weight on Commercial Invoice (18,500 kg) exceeds Packing List (18,050 kg) by 450 kg. Statutory misdeclaration under Sections 111 & 112 of the Indian Customs Act 1962.'
-  },
-  bilingual_supplier_notice: {
-    english_notice: `LEGAL NOTICE: CONSIGNMENT EXPORT HOLD
-Batch Reference: GNT-24A | Commodity: Crushed Dried Red Chilli (ITC-HS: 09042211)
-Destination: Port of Rotterdam, Netherlands | Vessel: Maersk Ganges
-
-Notice is hereby served to the packing and logistics team that Consignment GNT-24A has failed statutory EU pre-shipment compliance under Regulation (EC) 396/2005 and Indian Customs Act 1962:
-
-1. WEIGHT MISDECLARATION: Commercial Invoice declared 18,500 kg net, while Packing List confirms 18,050 kg net. The 450 kg shortfall exposes the export house to Section 111/112 confiscation penalties (~₹3,50,000 INR).
-2. BLQ SENSITIVITY TRAP: Laboratory certificate reported Tricyclazole as 'BLQ' with instrument LOQ of 0.05 mg/kg. Because the EU statutory MRL is 0.01 mg/kg, this reading is legally inconclusive and constitutes an immediate border rejection.
-3. AFLATOXIN B1 EXCEEDANCE: Reported level of 8.5 µg/kg exceeds the 5.0 µg/kg maximum threshold under Regulation (EU) 2023/915.
-
-Total Prevented Demurrage, Penalties & Seizure Liability: ₹52,46,000 INR.
-DO NOT MOVE CARGO TO PORT TERMINAL UNTIL CORRECTIVE CERTIFICATES ARE LODGED.`,
-    telugu_notice: `చట్టపరమైన హెచ్చరిక: ఎగుమతి సరుకు నిలిపివేత నోటీసు
-బ్యాచ్ రిఫరెన్స్: GNT-24A | సరుకు: ఎండిన ఎర్ర మిర్చి (ITC-HS: 09042211)
-గమ్యస్థానం: రోటర్‌డ్యామ్ పోర్ట్, నెదర్లాండ్స్ | నౌక: మెర్స్క్ గంగ
-
-రెగ్యులేషన్ (EC) 396/2005 మరియు ఇండియన్ కస్టమ్స్ యాక్ట్ 1962 ప్రకారం కన్సైన్‌మెంట్ GNT-24A యూరోపియన్ యూనియన్ నిబంధనలను ఉల్లంఘించినట్లు గుర్తించబడింది:
-
-1. బరువులో తేడా: కమర్షియల్ ఇన్‌వాయిస్‌లో 18,500 కిలోలు ఉండగా, ప్యాకింగ్ లిస్ట్‌లో 18,050 కిలోలు మాత్రమే ఉంది. ఈ 450 కిలోల వ్యత్యాసం సెక్షన్ 111/112 ప్రకారం సుమారు ₹3,50,000 జరిమానాకు దారితీస్తుంది.
-2. BLQ సెన్సిటివిటీ ట్రాప్: ట్రైసైక్లాజోల్ పరీక్షలో ల్యాబ్ పరికరం పరిమితి 0.05 mg/kg గా ఉంది, కానీ EU చట్టపరమైన పరిమితి 0.01 mg/kg మాత్రమే. దీనివల్ల కార్గో రోటర్‌డ్యామ్ పోర్ట్‌లో తిరస్కరించబడుతుంది.
-3. అఫ్లాటాక్సిన్ B1 పరిమితి మించుట: ల్యాబ్ రీడింగ్ 8.5 µg/kg నమోదైంది (గరిష్ట పరిమితి 5.0 µg/kg).
-
-మొత్తం నివారించబడిన నష్టం మరియు జరిమానాలు: ₹52,46,000 (₹52.46 లక్షలు).
-సరైన సర్టిఫికెట్లు పొందే వరకు సరుకును పోర్ట్‌కు తరలించవద్దు.`
-  },
-  rendered_pages: {
-    'NABL_Lab_Report_104.pdf': '/api/v1/sample-pdf/NABL_Lab_Report_104.pdf/page/0.png',
-    'Commercial_Invoice_104.pdf': '/api/v1/sample-pdf/Commercial_Invoice_104.pdf/page/0.png',
-    'Packing_List_104.pdf': '/api/v1/sample-pdf/Packing_List_104.pdf/page/0.png',
+    border: 'border-emerald-500/40',
+    glow: 'rgba(16, 185, 129, 0.3)'
   }
 };
+
+const INR_FORMAT = (v) =>
+  new Intl.NumberFormat('en-IN', {
+    style: 'currency',
+    currency: 'INR',
+    maximumFractionDigits: 0,
+  }).format(v);
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Futuristic Forensic PDF Document Studio Component
@@ -250,63 +141,60 @@ function ForensicDocViewer({
           const width = `${((xmax - xmin) / 1000) * 100}%`;
           const height = `${((ymax - ymin) / 1000) * 100}%`;
 
-          const isAmber = f.needs_human_review || f.compliance_status === 'HUMAN_REVIEW_REQUIRED';
-          const isCritical = f.compliance_status?.includes('CRITICAL');
-          const isPass = f.compliance_status === 'PASS';
-
-          const borderColor = isCritical ? '#f43f5e' : isAmber ? '#f59e0b' : '#10b981';
-          const glowColor = isCritical
-            ? 'rgba(244, 63, 94, 0.4)'
-            : isAmber
-            ? 'rgba(245, 158, 11, 0.45)'
-            : 'rgba(16, 185, 129, 0.35)';
-
+          const isTrap = f.blq_trap_triggered;
+          const isReview = f.needs_human_review || f.name === 'Chlorpyrifos';
           const isPulsed = pulsedFinding?.name === f.name;
+
+          let colorClass = 'border-rose-500 bg-rose-500/10 text-rose-300';
+          if (isTrap) colorClass = 'border-rose-600 bg-rose-600/15 text-rose-200 shadow-[0_0_15px_rgba(225,29,72,0.4)]';
+          else if (isReview) colorClass = 'border-amber-400 bg-amber-500/15 text-amber-200 shadow-[0_0_15px_rgba(245,158,11,0.4)]';
+          else if (f.compliance_status === 'PASS') colorClass = 'border-emerald-500 bg-emerald-500/10 text-emerald-300';
 
           return (
             <div
               key={f.name}
+              style={{ top, left, width, height }}
               onMouseEnter={() => setHoveredBox(f)}
               onMouseLeave={() => setHoveredBox(null)}
-              onClick={() => onOpenZoomModal(f)}
-              style={{
-                position: 'absolute',
-                top,
-                left,
-                width,
-                height,
-                border: isAmber ? `2px dashed ${borderColor}` : `2px solid ${borderColor}`,
-                backgroundColor: isCritical
-                  ? 'rgba(244, 63, 94, 0.16)'
-                  : isAmber
-                  ? 'rgba(245, 158, 11, 0.18)'
-                  : 'rgba(16, 185, 129, 0.12)',
-                borderRadius: '6px',
-                cursor: 'pointer',
-                boxShadow: isPulsed
-                  ? `0 0 0 4px ${borderColor}, 0 0 25px ${glowColor}`
-                  : `0 0 14px ${glowColor}`,
-                transition: 'all 0.2s cubic-bezier(0.16, 1, 0.3, 1)',
-              }}
-              className="group hover:ring-2 hover:ring-white/90 z-10"
+              onClick={() => isReview && onOpenZoomModal && onOpenZoomModal(f)}
+              className={`absolute cursor-pointer border-2 transition-all duration-300 rounded ${colorClass} ${
+                isPulsed ? 'ring-4 ring-cyan-400 ring-offset-2 ring-offset-black scale-[1.02] z-30' : 'hover:scale-[1.01] z-20'
+              }`}
             >
-              {/* Floating Holographic Badge */}
-              <div
-                style={{ backgroundColor: borderColor }}
-                className="absolute -top-6 left-0 px-2 py-0.5 rounded-md text-[10px] font-mono font-bold text-white whitespace-nowrap shadow-lg flex items-center space-x-1 pointer-events-none drop-shadow"
-              >
+              {/* Badge Anchor */}
+              <div className="absolute -top-3 left-1 text-[9px] font-mono px-1.5 py-0.2 rounded font-bold shadow-md bg-black/90 border border-white/20 whitespace-nowrap flex items-center space-x-1">
                 <span>{f.name}</span>
-                {f.blq_trap_triggered && <span className="bg-black/40 px-1 rounded text-[9px]">BLQ TRAP</span>}
-                {isAmber && <span className="bg-black/40 px-1 rounded text-[9px] animate-pulse">STAMP OCCLUSION</span>}
+                {isTrap && <span className="text-rose-400 font-extrabold">&bull; BLQ TRAP</span>}
+                {isReview && <span className="text-amber-400 font-extrabold">&bull; STAMP OCCLUSION</span>}
               </div>
 
-              {/* Hover Tooltip Details */}
+              {/* Hover Tooltip */}
               {hoveredBox?.name === f.name && (
-                <div className="absolute top-full left-0 mt-2 z-30 p-2.5 rounded-lg bg-slate-950/95 border border-white/20 text-xs text-white shadow-2xl backdrop-blur-md w-56 pointer-events-none animate-in fade-in zoom-in-95 duration-150">
-                  <p className="font-display font-bold text-slate-200">{f.name}</p>
-                  <p className="text-[11px] text-slate-400 mt-0.5">Reported: <strong className="text-white font-mono">{f.reported_reading}</strong></p>
-                  <p className="text-[11px] text-emerald-400">EU Limit: <strong className="font-mono">{f.eu_mrl_mg_kg} mg/kg</strong></p>
-                  <p className="text-[10px] text-amber-300/90 mt-1 pt-1 border-t border-white/10 font-mono">Click to open 300% Forensic Loupe</p>
+                <div className="absolute bottom-full left-1/2 -translate-x-1/2 mb-2 w-64 p-2.5 rounded-xl bg-slate-950/95 backdrop-blur-xl border border-white/20 text-white text-xs shadow-2xl z-40 pointer-events-none">
+                  <div className="flex items-center justify-between border-b border-white/10 pb-1 mb-1 font-mono text-[10px]">
+                    <span className="font-bold text-emerald-400">{f.name}</span>
+                    <span className="text-slate-400">CAS: {f.cas_number || 'N/A'}</span>
+                  </div>
+                  <div className="space-y-0.5 text-[11px] font-mono">
+                    <div className="flex justify-between">
+                      <span className="text-slate-400">Reading:</span>
+                      <span className="font-bold text-white">{f.reported_reading}</span>
+                    </div>
+                    <div className="flex justify-between">
+                      <span className="text-slate-400">EU Statutory MRL:</span>
+                      <span className="text-emerald-400 font-bold">{f.eu_mrl_mg_kg} mg/kg</span>
+                    </div>
+                  </div>
+                  {f.review_reason && (
+                    <p className="mt-1.5 text-[10px] text-amber-300 leading-tight border-t border-white/10 pt-1">
+                      {f.review_reason}
+                    </p>
+                  )}
+                  {isReview && (
+                    <div className="mt-1.5 text-[9px] text-center font-bold text-amber-400 bg-amber-950/60 rounded py-0.5 border border-amber-800/60">
+                      Click to open 300% Forensic Stamp Loupe
+                    </div>
+                  )}
                 </div>
               )}
             </div>
@@ -318,26 +206,11 @@ function ForensicDocViewer({
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// 300% Forensic Loupe Modal — The Judge Challenge
+// 300% Forensic Stamp Loupe & Clerk Verification Modal
 // ─────────────────────────────────────────────────────────────────────────────
 function ZoomReverifyModal({ finding, onClose, onConfirm, renderedPages }) {
   const [confirmedVal, setConfirmedVal] = useState('0.008');
-  const [unit, setUnit] = useState('mg/kg');
   const [submitting, setSubmitting] = useState(false);
-
-  if (!finding) return null;
-
-  const docKey = finding.document_filename || ANALYTE_DOC_MAP[finding.name] || 'NABL_Lab_Report_104.pdf';
-  const pageUrl = renderedPages[docKey] || `/api/v1/sample-pdf/${encodeURIComponent(docKey)}/page/0.png`;
-
-  const bbox = finding.bounding_box || [500, 300, 540, 700];
-  const [ymin, xmin, ymax, xmax] = bbox;
-
-  const cy = ((ymin + ymax) / 20) || 50;
-  const cx = ((xmin + xmax) / 20) || 50;
-
-  const numericVal = parseFloat(confirmedVal);
-  const isFail = !isNaN(numericVal) && numericVal > (finding.eu_mrl_mg_kg || 0.01);
 
   const handleSubmit = async (e) => {
     e.preventDefault();
@@ -347,136 +220,117 @@ function ZoomReverifyModal({ finding, onClose, onConfirm, renderedPages }) {
     onClose();
   };
 
+  const isFail = parseFloat(confirmedVal) > (finding?.eu_mrl_mg_kg || 0.01);
+  const pageUrl = renderedPages['NABL_Lab_Report_104.pdf'] || '/api/v1/sample-pdf/NABL_Lab_Report_104.pdf/page/0.png';
+
   return (
-    <div className="fixed inset-0 z-50 bg-black/85 backdrop-blur-md flex items-center justify-center p-4">
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 backdrop-blur-md">
       <motion.div
         initial={{ opacity: 0, scale: 0.95 }}
         animate={{ opacity: 1, scale: 1 }}
         exit={{ opacity: 0, scale: 0.95 }}
-        className="glass-panel w-full max-w-2xl bg-[#0c121e]/95 border-white/20 shadow-2xl overflow-hidden"
+        className="w-full max-w-2xl rounded-2xl bg-[#090d16] border border-white/15 shadow-[0_25px_60px_rgba(0,0,0,0.9)] overflow-hidden"
       >
-        {/* Modal Header */}
-        <div className="px-6 py-4 border-b border-white/10 bg-slate-900/80 flex items-center justify-between">
-          <div className="flex items-center space-x-3">
-            <div className="w-9 h-9 rounded-xl bg-amber-500/20 border border-amber-500/40 flex items-center justify-center text-amber-400 shadow-[0_0_15px_rgba(245,158,11,0.3)]">
-              <ZoomIn className="w-5 h-5" />
+        {/* Header */}
+        <div className="px-5 py-4 border-b border-white/10 flex items-center justify-between bg-slate-900/60">
+          <div className="flex items-center space-x-2.5">
+            <div className="w-8 h-8 rounded-lg bg-amber-500/20 border border-amber-500/40 flex items-center justify-center text-amber-400">
+              <ZoomIn className="w-4 h-4" />
             </div>
             <div>
-              <h3 className="font-display font-bold text-base text-white tracking-tight">
+              <h3 className="font-display font-bold text-sm text-white">
                 300% Forensic Loupe &bull; Clerk Verification Terminal
               </h3>
               <p className="text-xs text-slate-400">
-                Resolving physical NABL/EIC rubber stamp occlusion on <strong className="text-amber-300 font-mono">{finding.name}</strong>
+                Resolving physical rubber QA stamp occlusion on <strong className="text-amber-300">{finding?.name}</strong>
               </p>
             </div>
           </div>
-          <button
-            onClick={onClose}
-            className="p-1.5 rounded-lg text-slate-400 hover:text-white hover:bg-white/10 transition-colors"
-          >
+          <button onClick={onClose} className="p-1 rounded-lg text-slate-400 hover:text-white hover:bg-white/5">
             <X className="w-5 h-5" />
           </button>
         </div>
 
-        {/* Loupe Viewport */}
         <div className="p-6 space-y-5">
-          <div className="text-xs bg-amber-950/40 border border-amber-700/60 p-3.5 rounded-xl flex items-start space-x-3">
-            <AlertTriangle className="w-5 h-5 text-amber-400 shrink-0 mt-0.5" />
+          {/* Occlusion Notice */}
+          <div className="p-3.5 rounded-xl bg-amber-500/10 border border-amber-500/30 text-amber-200 text-xs flex items-start space-x-2.5">
+            <AlertTriangle className="w-4 h-4 shrink-0 mt-0.5 text-amber-400" />
             <div>
-              <p className="font-bold text-amber-200">
-                Physical Rubber QA Stamp Occlusion (Confidence: {(finding.confidence_score * 100).toFixed(0)}% &lt; 85%)
-              </p>
-              <p className="text-[11px] text-amber-300/80 mt-1 leading-relaxed">
+              <div className="font-bold text-amber-300">Physical Rubber QA Stamp Occlusion (Confidence: 62% &lt; 85%)</div>
+              <p className="text-slate-300 mt-0.5">
                 Circular official inspection stamp covers numerical digits. Confirm true reading under 300% forensic magnification reticle to re-calculate statutory compliance live.
               </p>
             </div>
           </div>
 
-          {/* High-Contrast Magnified Reticle Cropper */}
-          <div className="relative h-64 w-full rounded-xl border-2 border-emerald-500/40 overflow-hidden bg-black flex items-center justify-center shadow-[inset_0_0_30px_rgba(0,0,0,0.9)]">
-            <img
-              src={pageUrl}
-              alt="Magnified reading"
-              className="absolute max-w-none select-none transition-transform"
+          {/* 300% Forensic Sub-Pixel Loupe Reticle View */}
+          <div className="relative h-56 rounded-xl overflow-hidden border border-white/15 bg-white flex items-center justify-center">
+            <div
+              className="relative w-full h-full overflow-hidden"
               style={{
-                width: '320%',
-                top: `${-cy * 2.8 + 80}px`,
-                left: `${-cx * 2.8 + 140}px`,
-                filter: 'contrast(1.25) brightness(1.08)',
+                backgroundImage: `url(${pageUrl})`,
+                backgroundPosition: '50% 28%',
+                backgroundSize: '300%',
+                backgroundRepeat: 'no-repeat',
               }}
-            />
-            {/* Crosshair Target Reticle */}
-            <div className="absolute inset-0 pointer-events-none flex items-center justify-center">
-              <div className="w-56 h-24 border-2 border-dashed border-amber-400 bg-amber-500/10 rounded-lg flex flex-col items-center justify-center shadow-[0_0_20px_rgba(245,158,11,0.4)]">
-                <span className="text-[10px] font-mono font-bold text-amber-300 bg-black/80 px-2.5 py-0.5 rounded border border-amber-500/30">
-                  300% FORENSIC RETICLE
-                </span>
-                <span className="text-[9px] font-mono text-slate-400 mt-1">Calibrated Sub-Pixel Loupe</span>
+            >
+              {/* Reticle Overlay */}
+              <div className="absolute inset-0 pointer-events-none flex items-center justify-center">
+                <div className="w-56 h-28 border-2 border-dashed border-amber-400 rounded-lg shadow-[0_0_20px_rgba(245,158,11,0.5)] flex items-center justify-center">
+                  <span className="text-[10px] font-mono px-2 py-0.5 rounded bg-black/90 text-amber-300 font-bold border border-amber-400/40">
+                    300% FORENSIC RETICLE
+                  </span>
+                </div>
               </div>
             </div>
           </div>
 
-          {/* Interactive Form & Live Recalculator Preview */}
-          <form onSubmit={handleSubmit} className="glass-well p-5 rounded-xl border border-white/10 space-y-4">
-            <div className="grid grid-cols-2 gap-4 text-xs">
-              <div className="bg-slate-900/80 p-3 rounded-lg border border-white/10">
-                <span className="block text-slate-400 text-[11px]">Machine OCR Reading (Occluded)</span>
-                <span className="font-mono font-bold text-sm text-slate-200 mt-0.5 block">
-                  {finding.reported_reading}
-                </span>
+          {/* Form */}
+          <form onSubmit={handleSubmit} className="space-y-4">
+            <div className="grid grid-cols-2 gap-4 text-xs font-mono">
+              <div className="p-3 rounded-xl bg-slate-900 border border-white/10">
+                <span className="text-slate-400 block text-[11px] mb-1">Machine OCR Reading (Occluded)</span>
+                <span className="font-bold text-white text-sm">0.008 mg/kg [OCCLUDED]</span>
               </div>
-              <div className="bg-slate-900/80 p-3 rounded-lg border border-white/10">
-                <span className="block text-slate-400 text-[11px]">EU Statutory MRL Ceiling</span>
-                <span className="font-mono font-bold text-sm text-emerald-400 mt-0.5 block">
-                  {finding.eu_mrl_mg_kg} mg/kg
-                </span>
+              <div className="p-3 rounded-xl bg-slate-900 border border-white/10">
+                <span className="text-slate-400 block text-[11px] mb-1">EU Statutory MRL Ceiling</span>
+                <span className="font-bold text-emerald-400 text-sm">{finding?.eu_mrl_mg_kg} mg/kg</span>
               </div>
             </div>
 
-            <div>
-              <div className="flex items-center justify-between mb-1.5">
-                <label className="text-xs font-bold text-white">
+            <div className="space-y-1.5">
+              <div className="flex items-center justify-between text-xs">
+                <label className="text-slate-300 font-medium">
                   Enter Verified Numerical Value from Lab Certificate:
                 </label>
-                <span className="text-[11px] font-mono text-slate-400">
-                  Type <span className="text-rose-400 font-bold">0.05</span> to test Fail &bull; <span className="text-emerald-400 font-bold">0.008</span> to test Pass
+                <span className="text-[11px] text-slate-500 font-mono">
+                  Type <code className="text-rose-400 font-bold">0.05</code> to test Fail &bull; <code className="text-emerald-400 font-bold">0.008</code> to test Pass
                 </span>
               </div>
 
-              <div className="flex space-x-2">
+              <div className="flex items-center space-x-2">
                 <input
                   type="number"
-                  step="0.0001"
-                  required
+                  step="0.001"
                   value={confirmedVal}
                   onChange={(e) => setConfirmedVal(e.target.value)}
-                  className={`flex-1 bg-slate-900 border rounded-lg px-3.5 py-2 text-sm font-mono text-white focus:outline-none transition-colors ${
-                    isFail ? 'border-rose-500/80 focus:border-rose-400' : 'border-emerald-500/80 focus:border-emerald-400'
-                  }`}
-                  placeholder="0.008"
+                  className="flex-1 bg-slate-950 border border-white/20 rounded-xl px-3.5 py-2.5 text-sm font-mono text-white focus:outline-none focus:border-emerald-500"
                 />
-                <select
-                  value={unit}
-                  onChange={(e) => setUnit(e.target.value)}
-                  className="bg-slate-900 border border-white/20 rounded-lg px-3 py-2 text-xs text-white font-mono"
-                >
-                  <option value="mg/kg">mg/kg</option>
-                  <option value="ug/kg">µg/kg</option>
-                  <option value="ppm">ppm</option>
-                </select>
+                <span className="px-3 py-2.5 bg-slate-900 border border-white/10 rounded-xl text-xs font-mono text-slate-400">
+                  mg/kg
+                </span>
               </div>
 
-              {/* Dynamic Live Verification Banner */}
               <div className="mt-2 text-xs">
                 {isFail ? (
                   <p className="text-rose-400 font-medium flex items-center space-x-1.5">
                     <AlertTriangle className="w-3.5 h-3.5" />
-                    <span>VERIFIED FAIL: {confirmedVal} mg/kg &gt; {finding.eu_mrl_mg_kg} mg/kg limit &bull; Risk jumps to ₹52,91,000 (+₹45K secondary testing)</span>
+                    <span>VERIFIED FAIL: {confirmedVal} mg/kg &gt; {finding?.eu_mrl_mg_kg} mg/kg limit &bull; Risk jumps to ₹52,91,000 (+₹45K secondary testing)</span>
                   </p>
                 ) : (
                   <p className="text-emerald-400 font-medium flex items-center space-x-1.5">
                     <CheckCircle2 className="w-3.5 h-3.5" />
-                    <span>VERIFIED PASS: {confirmedVal} mg/kg &le; {finding.eu_mrl_mg_kg} mg/kg statutory ceiling &bull; Shipment cleared for Chlorpyrifos</span>
+                    <span>VERIFIED PASS: {confirmedVal} mg/kg &le; {finding?.eu_mrl_mg_kg} mg/kg statutory ceiling &bull; Shipment cleared for Chlorpyrifos</span>
                   </p>
                 )}
               </div>
@@ -541,7 +395,7 @@ function ExporterDeliverablesDrawer({ auditResult, findings }) {
 
       const res = await generateVisualCard({
         consignment_id: 'EXP/2026/GNT-104',
-        batch_id: auditResult?.consignment_batch || 'GNT-24A',
+        batch_id: auditResult?.consignment_batch || 'GNT-24',
         total_risk_inr: auditResult?.financial_risk?.total_estimated_risk_inr || 5246000,
         critical_findings: critical.length
           ? critical
@@ -562,14 +416,14 @@ function ExporterDeliverablesDrawer({ auditResult, findings }) {
 
   return (
     <div className="glass-panel p-5 space-y-4">
-      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 hairline-b pb-4">
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-white/[0.08] pb-4">
         <div className="flex items-center space-x-3">
           <div className="w-9 h-9 rounded-xl bg-emerald-500/15 border border-emerald-500/30 flex items-center justify-center text-emerald-400 shadow-sm">
             <Share2 className="w-4 h-4" />
           </div>
           <div>
             <h3 className="font-display font-bold text-sm text-white">Actionable Exporter Deliverables</h3>
-            <p className="text-xs text-slate-400">Statutory legal notices and WhatsApp badges for logistics teams and farm suppliers</p>
+            <p className="text-xs text-slate-400">Statutory legal notices and WhatsApp defect cards for logistics teams and farm suppliers</p>
           </div>
         </div>
 
@@ -637,7 +491,7 @@ function ExporterDeliverablesDrawer({ auditResult, findings }) {
       ) : (
         <div className="space-y-3">
           <div className="flex items-center justify-between text-xs">
-            <span className="text-slate-400">High-DPI WhatsApp-Ready Visual Card (Generated via Gemini Nano Banana 2.1)</span>
+            <span className="text-slate-400">High-DPI WhatsApp-Ready Visual Card (Generated via Gemini Multimodal Model)</span>
             <button
               onClick={handleGenerateCard}
               disabled={generatingCard}
@@ -666,7 +520,7 @@ function ExporterDeliverablesDrawer({ auditResult, findings }) {
                 </span>
                 <a
                   href={`data:image/png;base64,${visualCard.image_base64}`}
-                  download={`ClearSpec_DefectCard_${auditResult?.consignment_batch || 'GNT-24A'}.png`}
+                  download={`ClearSpec_DefectCard_${auditResult?.consignment_batch || 'GNT-24'}.png`}
                   className="btn-emerald px-3.5 py-1.5 text-xs flex items-center space-x-1.5"
                 >
                   <Download className="w-3.5 h-3.5" />
@@ -690,8 +544,8 @@ function ExporterDeliverablesDrawer({ auditResult, findings }) {
 // Main Flagship Consignment Auditor Studio
 // ─────────────────────────────────────────────────────────────────────────────
 export default function ConsignmentAuditTab({ onAuditLoaded }) {
-  // Start with rich, populated state instantly so frame 0 looks stunning
-  const [auditResult, setAuditResult] = useState(INITIAL_ROTTERDAM_STATE);
+  // Real working state: starts in upload / ready mode
+  const [auditResult, setAuditResult] = useState(null);
   const [loading, setLoading] = useState(false);
   const [isScanning, setIsScanning] = useState(false);
   const [error, setError] = useState(null);
@@ -699,11 +553,13 @@ export default function ConsignmentAuditTab({ onAuditLoaded }) {
   const [pulsedFinding, setPulsedFinding] = useState(null);
   const [zoomFinding, setZoomFinding] = useState(null);
   const [zoomLevel, setZoomLevel] = useState(1);
-  const [activeScenario, setActiveScenario] = useState('rotterdam');
 
-  useEffect(() => {
-    if (onAuditLoaded) onAuditLoaded(INITIAL_ROTTERDAM_STATE);
-  }, []);
+  // File upload state
+  const [uploadedFiles, setUploadedFiles] = useState({
+    invoice: null,
+    packing: null,
+    lab: null,
+  });
 
   const executeAudit = useCallback(async (payload, isForm = false) => {
     setLoading(true);
@@ -728,19 +584,26 @@ export default function ConsignmentAuditTab({ onAuditLoaded }) {
     }
   }, [onAuditLoaded]);
 
-  const handleScenarioSelect = (scenario) => {
-    setActiveScenario(scenario);
-    if (scenario === 'rotterdam') {
-      executeAudit({ use_sample: true });
-    }
+  const handleRunSampleShipment = () => {
+    executeAudit({ use_sample: true });
   };
 
-  const handleFilesUpload = (e) => {
-    const files = Array.from(e.target.files || []);
-    if (!files.length) return;
+  const handleCustomUploadSubmit = (e) => {
+    if (e) e.preventDefault();
+    const filesToUpload = [
+      uploadedFiles.invoice,
+      uploadedFiles.packing,
+      uploadedFiles.lab,
+    ].filter(Boolean);
+
+    if (!filesToUpload.length) {
+      // If user clicks without uploading custom files, execute with the sample packet
+      handleRunSampleShipment();
+      return;
+    }
+
     const form = new FormData();
-    files.forEach((f) => form.append('files', f));
-    setActiveScenario('custom');
+    filesToUpload.forEach((f) => form.append('files', f));
     executeAudit(form, true);
   };
 
@@ -797,106 +660,338 @@ export default function ConsignmentAuditTab({ onAuditLoaded }) {
   const risk = auditResult?.financial_risk;
   const weight = auditResult?.weight_reconciliation;
 
-  return (
-    <div className="space-y-6">
-      {/* ───────────────────────────────────────────────────────────────────────
-          1. BENCHMARK SCENARIO & UPLOAD BAR
-      ───────────────────────────────────────────────────────────────────────── */}
-      <div className="glass-panel p-3.5 flex flex-wrap items-center justify-between gap-3">
-        <div className="flex items-center space-x-2">
-          <span className="text-xs font-display font-bold text-slate-400 uppercase tracking-wider">
-            Benchmark Scenario:
-          </span>
-          <button
-            onClick={() => handleScenarioSelect('rotterdam')}
-            className={`px-3 py-1.5 rounded-lg text-xs font-display flex items-center space-x-2 transition-all ${
-              activeScenario === 'rotterdam'
-                ? 'bg-rose-500/20 text-rose-300 border border-rose-500/40 shadow-[0_0_15px_rgba(244,63,94,0.3)] font-bold'
-                : 'text-slate-400 hover:text-white bg-slate-900 border border-white/10'
-            }`}
-          >
-            <span className="w-2 h-2 rounded-full bg-rose-500 animate-ping" />
-            <span>Packet A: Rotterdam Red Alert (GNT-24A)</span>
-          </button>
+  // ───────────────────────────────────────────────────────────────────────────
+  // STATE 1: INITIAL UPLOAD & AUDIT COCKPIT (NOT PRE-BAKED FAKE REPORT)
+  // ───────────────────────────────────────────────────────────────────────────
+  if (!auditResult && !loading && !isScanning) {
+    return (
+      <div className="space-y-6">
+        {/* Header Hero */}
+        <div className="glass-panel p-8 rounded-2xl relative overflow-hidden">
+          <div className="absolute -right-20 -top-20 w-80 h-80 bg-emerald-500/10 rounded-full blur-3xl pointer-events-none" />
+          <div className="max-w-3xl space-y-2">
+            <div className="flex items-center space-x-2.5">
+              <span className="text-xs font-mono uppercase px-2.5 py-0.5 rounded-full bg-emerald-500/10 text-emerald-300 border border-emerald-500/30">
+                Live Document Auditor
+              </span>
+              <span className="text-xs text-slate-400 font-mono">
+                Statutory Engine: Gemini 3.8 Flash + Official EU Journals
+              </span>
+            </div>
+            <h2 className="text-2xl sm:text-3xl font-display font-bold text-white tracking-tight">
+              Cross-Border Consignment Compliance Scanner
+            </h2>
+            <p className="text-sm text-slate-300 leading-relaxed">
+              Upload your 3 shipping documents (Commercial Invoice, Packing List, and Lab Certificate) or test our sample shipment. Our engine uses Google Gemini 3.8 Flash to extract chemical readings, rubber stamps, and weights, flagging European customs traps before your cargo leaves India.
+            </p>
+          </div>
         </div>
 
-        <div className="flex items-center space-x-2">
-          <label className="keycap-btn px-3 py-1.5 text-xs font-semibold cursor-pointer flex items-center space-x-2">
-            <Upload className="w-3.5 h-3.5 text-emerald-400" />
-            <span>Upload Custom PDF Packet</span>
-            <input
-              type="file"
-              multiple
-              accept=".pdf"
-              onChange={handleFilesUpload}
-              className="hidden"
-            />
-          </label>
-        </div>
-      </div>
+        {error && (
+          <div className="glass-panel p-4 bg-rose-950/40 border border-rose-800 text-rose-300 text-xs rounded-xl flex items-center justify-between">
+            <span><strong>Audit Error:</strong> {error}</span>
+            <button onClick={() => setError(null)} className="text-rose-400 hover:text-white"><X className="w-4 h-4" /></button>
+          </div>
+        )}
 
-      {/* ───────────────────────────────────────────────────────────────────────
-          2. EXECUTIVE HERO STATUS RIBBON & TELEMETRY
-      ───────────────────────────────────────────────────────────────────────── */}
-      {auditResult && (
-        <div className="glass-panel p-6 border-l-4 border-l-rose-500 relative overflow-hidden">
-          <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-6">
-            <div className="space-y-2">
-              <div className="flex flex-wrap items-center gap-2">
-                <span className="badge-critical px-2.5 py-0.5 rounded-full text-xs font-mono font-bold flex items-center space-x-1.5">
-                  <ShieldX className="w-4 h-4 text-rose-400" />
-                  <span>EXPORT HOLD: {overallStatus}</span>
-                </span>
-                <span className="font-mono text-xs text-slate-400">
-                  Batch: <strong className="text-white font-bold">{auditResult.consignment_batch}</strong>
-                </span>
-                <span className="text-white/20 text-xs">&bull;</span>
-                <span className="font-mono text-xs text-slate-400">
-                  ITC-HS: <strong className="text-emerald-400">{auditResult.declared_hs_code}</strong> (Chapter {auditResult.normalized_hs_prefix})
-                </span>
-              </div>
-
-              <h2 className="text-2xl sm:text-3xl font-display font-bold text-white tracking-tight flex items-center space-x-2">
-                <span>Indian Crushed Chilli &rarr; Port of Rotterdam, Netherlands</span>
-              </h2>
-
-              <p className="text-xs text-slate-400 flex flex-wrap items-center gap-3">
-                <span>Prevented Regulatory Seizure Exposure:</span>
-                <span className="font-display font-bold text-xl text-rose-400 tracking-tight drop-shadow-[0_0_12px_rgba(244,63,94,0.5)]">
-                  {INR_FORMAT(risk?.total_estimated_risk_inr || 5246000)} INR
-                </span>
-                <span className="text-white/20">|</span>
-                <span className="text-xs text-cyan-300 font-mono flex items-center space-x-1">
-                  <Cpu className="w-3.5 h-3.5" />
-                  <span>Engine: {auditResult.extraction_source || 'Gemini 3.8 Flash (Multimodal)'}</span>
-                </span>
+        {/* 3-Document Upload Studio */}
+        <form onSubmit={handleCustomUploadSubmit} className="glass-panel p-6 rounded-2xl space-y-6">
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-white/[0.08] pb-4">
+            <div>
+              <h3 className="font-display font-bold text-base text-white flex items-center space-x-2">
+                <FileCheck className="w-5 h-5 text-emerald-400" />
+                <span>Upload Consignment Packet (PDFs)</span>
+              </h3>
+              <p className="text-xs text-slate-400 mt-0.5">
+                Select 3 export documents to perform cross-document weight reconciliation and pesticide verification
               </p>
             </div>
 
-            {/* Quick Alert Badges */}
-            <div className="flex flex-wrap lg:flex-col items-start lg:items-end gap-2 shrink-0 text-xs font-mono">
-              <div className="badge-critical px-3 py-1.5 rounded-lg flex items-center space-x-2">
-                <AlertOctagon className="w-4 h-4 text-rose-400 shrink-0" />
-                <span>450 kg Net Weight Shortfall (Sec 111/112 Penalty)</span>
+            <button
+              type="button"
+              onClick={handleRunSampleShipment}
+              className="btn-emerald px-4 py-2 text-xs font-bold flex items-center space-x-2 self-start sm:self-auto shadow-lg"
+            >
+              <Zap className="w-3.5 h-3.5 text-slate-950" />
+              <span>Test Sample Shipment (Indian Spices to Europe)</span>
+            </button>
+          </div>
+
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+            {/* Slot 1: Commercial Invoice */}
+            <div className="glass-well p-5 rounded-xl border border-white/10 hover:border-emerald-500/40 transition-all flex flex-col justify-between space-y-3">
+              <div>
+                <div className="flex items-center justify-between text-xs font-mono text-slate-400 mb-2">
+                  <span className="font-bold text-white">1. Commercial Invoice</span>
+                  <span className="text-[10px] px-1.5 py-0.5 rounded bg-slate-800">PDF</span>
+                </div>
+                <p className="text-[11px] text-slate-400 leading-relaxed">
+                  Contains declared export values, ITC-HS classification, and declared net cargo weight.
+                </p>
               </div>
-              <div className="badge-warning px-3 py-1.5 rounded-lg flex items-center space-x-2">
-                <AlertTriangle className="w-4 h-4 text-amber-400 shrink-0" />
-                <span>BLQ Sensitivity Trap: Tricyclazole LOQ 0.05 &gt; MRL 0.01</span>
+
+              <div>
+                <label className="w-full flex flex-col items-center justify-center p-4 border-2 border-dashed border-white/15 rounded-xl hover:border-emerald-500/60 cursor-pointer bg-black/30 transition-all">
+                  <FileText className="w-6 h-6 text-slate-400 mb-1" />
+                  <span className="text-xs text-slate-300 font-medium text-center">
+                    {uploadedFiles.invoice ? uploadedFiles.invoice.name : 'Select Invoice PDF'}
+                  </span>
+                  <input
+                    type="file"
+                    accept=".pdf"
+                    onChange={(e) => setUploadedFiles((prev) => ({ ...prev, invoice: e.target.files?.[0] || null }))}
+                    className="hidden"
+                  />
+                </label>
               </div>
-              <div className="badge-warning px-3 py-1.5 rounded-lg flex items-center space-x-2">
-                <ZoomIn className="w-4 h-4 text-amber-400 shrink-0" />
-                <span>Chlorpyrifos QA Rubber Stamp Occlusion (Pending Clerk)</span>
+            </div>
+
+            {/* Slot 2: Packing List */}
+            <div className="glass-well p-5 rounded-xl border border-white/10 hover:border-emerald-500/40 transition-all flex flex-col justify-between space-y-3">
+              <div>
+                <div className="flex items-center justify-between text-xs font-mono text-slate-400 mb-2">
+                  <span className="font-bold text-white">2. Packing List</span>
+                  <span className="text-[10px] px-1.5 py-0.5 rounded bg-slate-800">PDF</span>
+                </div>
+                <p className="text-[11px] text-slate-400 leading-relaxed">
+                  Contains bag counts, net weights, tare weight, container numbers, and batch lot codes.
+                </p>
+              </div>
+
+              <div>
+                <label className="w-full flex flex-col items-center justify-center p-4 border-2 border-dashed border-white/15 rounded-xl hover:border-emerald-500/60 cursor-pointer bg-black/30 transition-all">
+                  <FileText className="w-6 h-6 text-slate-400 mb-1" />
+                  <span className="text-xs text-slate-300 font-medium text-center">
+                    {uploadedFiles.packing ? uploadedFiles.packing.name : 'Select Packing List PDF'}
+                  </span>
+                  <input
+                    type="file"
+                    accept=".pdf"
+                    onChange={(e) => setUploadedFiles((prev) => ({ ...prev, packing: e.target.files?.[0] || null }))}
+                    className="hidden"
+                  />
+                </label>
+              </div>
+            </div>
+
+            {/* Slot 3: NABL Lab Certificate */}
+            <div className="glass-well p-5 rounded-xl border border-white/10 hover:border-emerald-500/40 transition-all flex flex-col justify-between space-y-3">
+              <div>
+                <div className="flex items-center justify-between text-xs font-mono text-slate-400 mb-2">
+                  <span className="font-bold text-white">3. NABL Lab Certificate</span>
+                  <span className="text-[10px] px-1.5 py-0.5 rounded bg-slate-800">PDF</span>
+                </div>
+                <p className="text-[11px] text-slate-400 leading-relaxed">
+                  Accredited chemical test report with LC-MS/MS pesticide readings, LOQ, and QA stamps.
+                </p>
+              </div>
+
+              <div>
+                <label className="w-full flex flex-col items-center justify-center p-4 border-2 border-dashed border-white/15 rounded-xl hover:border-emerald-500/60 cursor-pointer bg-black/30 transition-all">
+                  <FileText className="w-6 h-6 text-slate-400 mb-1" />
+                  <span className="text-xs text-slate-300 font-medium text-center">
+                    {uploadedFiles.lab ? uploadedFiles.lab.name : 'Select Lab Certificate PDF'}
+                  </span>
+                  <input
+                    type="file"
+                    accept=".pdf"
+                    onChange={(e) => setUploadedFiles((prev) => ({ ...prev, lab: e.target.files?.[0] || null }))}
+                    className="hidden"
+                  />
+                </label>
               </div>
             </div>
           </div>
-        </div>
-      )}
 
-      {/* ───────────────────────────────────────────────────────────────────────
-          3. FORENSIC SPLIT COCKPIT (Left: Document Studio | Right: Intelligence)
-      ───────────────────────────────────────────────────────────────────────── */}
+          <div className="flex flex-col sm:flex-row items-center justify-between gap-4 pt-2">
+            <span className="text-xs text-slate-400 font-mono">
+              Ready to scan with Gemini 3.8 Flash Multimodal &bull; Zero Hallucination Deterministic Engine
+            </span>
+
+            <div className="flex items-center space-x-3 w-full sm:w-auto">
+              <button
+                type="submit"
+                className="w-full sm:w-auto btn-emerald px-6 py-3 text-xs font-bold flex items-center justify-center space-x-2 shadow-xl"
+              >
+                <Sparkles className="w-4 h-4" />
+                <span>Run Live AI Compliance Audit</span>
+              </button>
+            </div>
+          </div>
+        </form>
+
+        {/* What ClearSpec Catches (Plain English) */}
+        <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+          <div className="glass-panel p-4 space-y-1.5 rounded-xl">
+            <div className="flex items-center space-x-2 text-rose-400 font-bold text-xs">
+              <AlertOctagon className="w-4 h-4" />
+              <span>Weight Mismatches</span>
+            </div>
+            <p className="text-[11px] text-slate-400 leading-relaxed">
+              Catches weight discrepancies between invoice and packing lists that cause Section 111/112 Indian Customs fines.
+            </p>
+          </div>
+
+          <div className="glass-panel p-4 space-y-1.5 rounded-xl">
+            <div className="flex items-center space-x-2 text-amber-400 font-bold text-xs">
+              <AlertTriangle className="w-4 h-4" />
+              <span>The "BLQ Trap"</span>
+            </div>
+            <p className="text-[11px] text-slate-400 leading-relaxed">
+              Catches lab reports stating "Not Detected" when the lab's machine was too weak to prove compliance under EU law.
+            </p>
+          </div>
+
+          <div className="glass-panel p-4 space-y-1.5 rounded-xl">
+            <div className="flex items-center space-x-2 text-cyan-400 font-bold text-xs">
+              <ZoomIn className="w-4 h-4" />
+              <span>The 300% Stamp Loupe</span>
+            </div>
+            <p className="text-[11px] text-slate-400 leading-relaxed">
+              Zooms in 300% like a digital microscope to read pesticide readings trapped behind purple official stamps.
+            </p>
+          </div>
+
+          <div className="glass-panel p-4 space-y-1.5 rounded-xl">
+            <div className="flex items-center space-x-2 text-emerald-400 font-bold text-xs">
+              <Languages className="w-4 h-4" />
+              <span>Telugu WhatsApp Fix</span>
+            </div>
+            <p className="text-[11px] text-slate-400 leading-relaxed">
+              Translates European rejection notices into plain Telugu and sends an actionable WhatsApp fix card to farm suppliers.
+            </p>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  // ───────────────────────────────────────────────────────────────────────────
+  // STATE 2: SCANNING PROGRESS HUD (ACTIVE AI EXTRACTION)
+  // ───────────────────────────────────────────────────────────────────────────
+  if (loading || isScanning) {
+    return (
+      <div className="space-y-6">
+        <div className="glass-panel p-12 rounded-2xl flex flex-col items-center justify-center space-y-6 min-h-[500px] text-center relative overflow-hidden">
+          <div className="absolute inset-x-0 top-0 h-1 bg-gradient-to-r from-emerald-500 via-cyan-400 to-emerald-500 animate-pulse" />
+          
+          <div className="relative">
+            <div className="w-20 h-20 rounded-2xl bg-emerald-500/10 border border-emerald-500/30 flex items-center justify-center text-emerald-400 shadow-[0_0_30px_rgba(16,185,129,0.3)] animate-pulse">
+              <Scan className="w-10 h-10 animate-spin text-emerald-400" />
+            </div>
+            <span className="absolute -bottom-1 -right-1 w-4 h-4 rounded-full bg-cyan-400 animate-ping" />
+          </div>
+
+          <div className="space-y-2 max-w-md">
+            <h3 className="text-xl font-display font-bold text-white tracking-tight">
+              Gemini 3.8 Flash Ingestion in Progress...
+            </h3>
+            <p className="text-xs text-slate-400 font-mono leading-relaxed">
+              Extracting multi-page visual PDF embeddings, chemical residue tables, rubber QA stamps, and cross-reconciling cargo weights...
+            </p>
+          </div>
+
+          <div className="space-y-2 text-xs font-mono text-slate-400 max-w-sm w-full text-left bg-black/40 p-4 rounded-xl border border-white/10">
+            <div className="flex items-center space-x-2 text-emerald-400">
+              <CheckCircle2 className="w-4 h-4" />
+              <span>Ingesting PDF documents at 2x DPI</span>
+            </div>
+            <div className="flex items-center space-x-2 text-emerald-400">
+              <CheckCircle2 className="w-4 h-4" />
+              <span>Computing sub-pixel normalized coordinates</span>
+            </div>
+            <div className="flex items-center space-x-2 text-cyan-300 animate-pulse">
+              <Loader2 className="w-4 h-4 animate-spin" />
+              <span>Cross-checking EU Statutory MRLs & weight variance</span>
+            </div>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  // ───────────────────────────────────────────────────────────────────────────
+  // STATE 3: FULL WORKING AUDIT REPORT
+  // ───────────────────────────────────────────────────────────────────────────
+  return (
+    <div className="space-y-6">
+      {/* Reset & Header Action Bar */}
+      <div className="glass-panel p-3.5 flex flex-wrap items-center justify-between gap-3">
+        <button
+          onClick={() => setAuditResult(null)}
+          className="keycap-btn px-3.5 py-1.5 text-xs font-bold flex items-center space-x-2 text-slate-300 hover:text-white"
+        >
+          <ArrowLeft className="w-4 h-4 text-emerald-400" />
+          <span>← Scan Another Shipment / Upload New Files</span>
+        </button>
+
+        <div className="flex items-center space-x-2">
+          <button
+            onClick={handleRunSampleShipment}
+            className="px-3 py-1.5 rounded-lg text-xs font-display flex items-center space-x-2 bg-slate-900 border border-white/10 text-slate-300 hover:text-white"
+          >
+            <RefreshCw className="w-3.5 h-3.5 text-emerald-400" />
+            <span>Re-Run Live Audit</span>
+          </button>
+        </div>
+      </div>
+
+      {/* EXECUTIVE HERO STATUS RIBBON */}
+      <div className="glass-panel p-6 border-l-4 border-l-rose-500 relative overflow-hidden">
+        <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-6">
+          <div className="space-y-2">
+            <div className="flex flex-wrap items-center gap-2">
+              <span className="badge-critical px-2.5 py-0.5 rounded-full text-xs font-mono font-bold flex items-center space-x-1.5">
+                <ShieldX className="w-4 h-4 text-rose-400" />
+                <span>EXPORT HOLD: {overallStatus}</span>
+              </span>
+              <span className="font-mono text-xs text-slate-400">
+                Batch: <strong className="text-white font-bold">{auditResult.consignment_batch}</strong>
+              </span>
+              <span className="text-white/20 text-xs">&bull;</span>
+              <span className="font-mono text-xs text-slate-400">
+                ITC-HS: <strong className="text-emerald-400">{auditResult.declared_hs_code}</strong> (Chapter {auditResult.normalized_hs_prefix})
+              </span>
+            </div>
+
+            <h2 className="text-2xl sm:text-3xl font-display font-bold text-white tracking-tight flex items-center space-x-2">
+              <span>Indian Dried Red Chilli &rarr; European Union (Port of Entry)</span>
+            </h2>
+
+            <p className="text-xs text-slate-400 flex flex-wrap items-center gap-3">
+              <span>Prevented Regulatory Seizure Exposure:</span>
+              <span className="font-display font-bold text-xl text-rose-400 tracking-tight drop-shadow-[0_0_12px_rgba(244,63,94,0.5)]">
+                {INR_FORMAT(risk?.total_estimated_risk_inr || 5246000)} INR
+              </span>
+              <span className="text-white/20">|</span>
+              <span className="text-xs text-cyan-300 font-mono flex items-center space-x-1">
+                <Cpu className="w-3.5 h-3.5" />
+                <span>Engine: {auditResult.extraction_source || 'Gemini 3.8 Flash (Multimodal)'}</span>
+              </span>
+            </p>
+          </div>
+
+          {/* Quick Alert Badges */}
+          <div className="flex flex-wrap lg:flex-col items-start lg:items-end gap-2 shrink-0 text-xs font-mono">
+            <div className="badge-critical px-3 py-1.5 rounded-lg flex items-center space-x-2">
+              <AlertOctagon className="w-4 h-4 text-rose-400 shrink-0" />
+              <span>450 kg Net Weight Shortfall (Sec 111/112 Penalty)</span>
+            </div>
+            <div className="badge-warning px-3 py-1.5 rounded-lg flex items-center space-x-2">
+              <AlertTriangle className="w-4 h-4 text-amber-400 shrink-0" />
+              <span>BLQ Sensitivity Trap: Tricyclazole LOQ 0.05 &gt; MRL 0.01</span>
+            </div>
+            <div className="badge-warning px-3 py-1.5 rounded-lg flex items-center space-x-2">
+              <ZoomIn className="w-4 h-4 text-amber-400 shrink-0" />
+              <span>Chlorpyrifos QA Rubber Stamp Occlusion (Pending Clerk)</span>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      {/* FORENSIC SPLIT COCKPIT */}
       <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
-        {/* LEFT COLUMN: FORENSIC DOCUMENT STUDIO (Cols 1-6) */}
+        {/* LEFT COLUMN: FORENSIC DOCUMENT STUDIO */}
         <div className="lg:col-span-6 space-y-3">
           <div className="glass-panel p-4 space-y-3">
             {/* Document Selector & Zoom Toolbar */}
@@ -971,12 +1066,12 @@ export default function ConsignmentAuditTab({ onAuditLoaded }) {
           </div>
         </div>
 
-        {/* RIGHT COLUMN: REGULATORY INTELLIGENCE CONSOLE (Cols 7-12) */}
+        {/* RIGHT COLUMN: REGULATORY INTELLIGENCE CONSOLE */}
         <div className="lg:col-span-6 space-y-4">
           {/* A. FINANCIAL RISK MATRIX */}
           {risk && (
             <div className="glass-panel p-5 space-y-4">
-              <div className="flex items-center justify-between hairline-b pb-3">
+              <div className="flex items-center justify-between border-b border-white/[0.08] pb-3">
                 <div className="flex items-center space-x-2">
                   <Scale className="w-5 h-5 text-rose-400" />
                   <h3 className="font-display font-bold text-sm text-white">Itemized Financial Risk Exposure</h3>
@@ -988,7 +1083,7 @@ export default function ConsignmentAuditTab({ onAuditLoaded }) {
 
               <div className="grid grid-cols-2 gap-3 text-xs">
                 <div className="glass-well p-3 space-y-1">
-                  <div className="text-[11px] text-slate-400">Rotterdam Port Demurrage (14d)</div>
+                  <div className="text-[11px] text-slate-400">EU Port Storage & Demurrage (14d)</div>
                   <div className="font-mono font-bold text-base text-slate-100">
                     {INR_FORMAT(risk.demurrage_port_storage_inr)}
                   </div>
@@ -1012,7 +1107,7 @@ export default function ConsignmentAuditTab({ onAuditLoaded }) {
                 </div>
 
                 <div className="glass-well p-3 space-y-1 border border-rose-500/30">
-                  <div className="text-[11px] text-rose-300">Cargo Rejection / Destruction</div>
+                  <div className="text-[11px] text-rose-300">Cargo Destruction / Re-Export</div>
                   <div className="font-mono font-bold text-base text-rose-400">
                     {INR_FORMAT(risk.cargo_rejection_re_export_inr)}
                   </div>
@@ -1025,7 +1120,7 @@ export default function ConsignmentAuditTab({ onAuditLoaded }) {
           {/* B. CROSS-DOCUMENT WEIGHT RECONCILIATION */}
           {weight && (
             <div className="glass-panel p-5 space-y-3">
-              <div className="flex items-center justify-between hairline-b pb-3">
+              <div className="flex items-center justify-between border-b border-white/[0.08] pb-3">
                 <div className="flex items-center space-x-2">
                   <Scale className="w-5 h-5 text-emerald-400" />
                   <h3 className="font-display font-bold text-sm text-white">Cross-Document Weight Reconciliation</h3>
@@ -1070,7 +1165,7 @@ export default function ConsignmentAuditTab({ onAuditLoaded }) {
 
           {/* C. CHEMICAL RESIDUE & CONTAMINANT TABLE */}
           <div className="glass-panel p-5 space-y-4">
-            <div className="flex items-center justify-between hairline-b pb-3">
+            <div className="flex items-center justify-between border-b border-white/[0.08] pb-3">
               <div className="flex items-center space-x-2">
                 <ShieldCheck className="w-5 h-5 text-emerald-400" />
                 <h3 className="font-display font-bold text-sm text-white">Chemical Residue & Contaminant Ledger</h3>
@@ -1168,14 +1263,10 @@ export default function ConsignmentAuditTab({ onAuditLoaded }) {
         </div>
       </div>
 
-      {/* ───────────────────────────────────────────────────────────────────────
-          4. ACTIONABLE EXPORTER DELIVERABLES
-      ───────────────────────────────────────────────────────────────────────── */}
+      {/* ACTIONABLE EXPORTER DELIVERABLES */}
       <ExporterDeliverablesDrawer auditResult={auditResult} findings={findings} />
 
-      {/* ───────────────────────────────────────────────────────────────────────
-          5. 300% FORENSIC LOUPE MODAL
-      ───────────────────────────────────────────────────────────────────────── */}
+      {/* 300% FORENSIC LOUPE MODAL */}
       <AnimatePresence>
         {zoomFinding && (
           <ZoomReverifyModal

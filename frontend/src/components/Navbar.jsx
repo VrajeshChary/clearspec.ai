@@ -23,10 +23,9 @@ export default function Navbar({
   isAuditing
 }) {
   const manualTools = [
-    { id: 'cbam-calculator', label: 'CBAM 2026', icon: Flame, badge: 'Reg 2023/956' },
-    { id: 'mrl-lookup', label: 'EU MRL & CAS', icon: Database, badge: 'SQLite DB' },
-    { id: 'unit-normalizer', label: 'Unit Normalizer', icon: Scale, badge: 'BLQ Trap' },
-    { id: 'gpt6-astra', label: 'GPT-6 Astra Hub', icon: Sparkles, badge: 'Frontier' },
+    { id: 'cbam-calculator', label: 'Carbon Border Tax (CBAM)', icon: Flame, badge: 'EU Green Tax' },
+    { id: 'mrl-lookup', label: 'Pesticide & Chemical Limits (MRL)', icon: Database, badge: 'EU Database' },
+    { id: 'unit-normalizer', label: 'Unit Converter & Lab Trap Check', icon: Scale, badge: 'Lab Invariance' },
   ];
 
   return (
@@ -78,11 +77,11 @@ export default function Navbar({
               />
             )}
             <FileSearch className={`relative z-10 w-4 h-4 ${activeTab === 'consignment-audit' ? 'text-white' : 'text-emerald-400'}`} />
-            <span className="relative z-10">Consignment Auditor</span>
+            <span className="relative z-10">Shipment Document Auditor</span>
             <span className={`relative z-10 ml-1 text-[10px] font-mono px-1.5 py-0.2 rounded-md ${
               activeTab === 'consignment-audit' ? 'bg-black/30 text-emerald-200' : 'bg-emerald-500/10 text-emerald-400'
             }`}>
-              Multi-PDF
+              Live AI Scanner
             </span>
           </button>
 
@@ -125,14 +124,14 @@ export default function Navbar({
               if (onRunDemo) onRunDemo();
             }}
             disabled={isAuditing}
-            title="Pre-loads Packet A (Rotterdam Chilli Consignment) with verified statutory violations"
+            title="Tests a sample export consignment (Indian Spices to Europe) with live AI extraction"
             className="group relative inline-flex items-center justify-center p-0.5 overflow-hidden rounded-xl font-medium transition-all duration-300 focus:outline-none"
           >
             <span className="absolute inset-0 w-full h-full bg-gradient-to-br from-emerald-400 via-teal-500 to-emerald-600 group-hover:from-emerald-300 group-hover:to-cyan-400 shadow-[0_0_20px_rgba(16,185,129,0.4)]" />
             <span className="relative px-3.5 py-1.5 transition-all ease-out bg-slate-950/80 rounded-[10px] group-hover:bg-opacity-0 flex items-center space-x-2 text-xs font-semibold text-white">
               <Zap className={`w-3.5 h-3.5 text-amber-300 ${isAuditing ? 'animate-spin' : 'group-hover:scale-110 transition-transform'}`} />
-              <span className="hidden sm:inline">1-Click Rotterdam Demo</span>
-              <span className="sm:hidden">Demo</span>
+              <span className="hidden sm:inline">Test Sample Shipment</span>
+              <span className="sm:hidden">Sample</span>
             </span>
           </button>
 

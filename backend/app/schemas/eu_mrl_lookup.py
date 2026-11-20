@@ -12,9 +12,14 @@ class HsNormalizeResponse(BaseModel):
     description: Optional[str]
 
 class ChemicalLookupRequest(BaseModel):
-    hs_code: str = Field(..., description="8-digit or 4-digit HS code")
+    hs_code: Optional[str] = Field(None, description="8-digit or 4-digit HS code")
+    raw_hs_code: Optional[str] = Field(None, description="Alias for hs_code")
     cas_number: Optional[str] = Field(None, description="CAS Registry Number (e.g. 75-21-8)")
     chemical_alias: Optional[str] = Field(None, description="Trade name or common chemical synonym")
+
+    @property
+    def effective_hs_code(self) -> str:
+        return self.hs_code or self.raw_hs_code or "0904"
 
 class ChemicalLookupResponse(BaseModel):
     matched: bool

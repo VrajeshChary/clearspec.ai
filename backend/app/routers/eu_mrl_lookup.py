@@ -23,7 +23,7 @@ def normalize_hs(payload: HsNormalizeRequest):
 def lookup_substance_mrl(payload: ChemicalLookupRequest):
     try:
         return lookup_chemical_mrl(
-            raw_hs_code=payload.hs_code,
+            raw_hs_code=payload.effective_hs_code,
             cas_number=payload.cas_number,
             chemical_alias=payload.chemical_alias,
         )

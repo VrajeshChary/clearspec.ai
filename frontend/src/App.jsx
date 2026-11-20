@@ -5,7 +5,6 @@ import ConsignmentAuditTab from './components/ConsignmentAuditTab';
 import CbamCalculatorTab from './components/CbamCalculatorTab';
 import MrlLookupTab from './components/MrlLookupTab';
 import UnitNormalizerTab from './components/UnitNormalizerTab';
-import Gpt6AstraTab from './components/Gpt6AstraTab';
 import LiveVoiceWidget from './components/LiveVoiceWidget';
 
 export default function App() {
@@ -50,7 +49,6 @@ export default function App() {
             {activeTab === 'cbam-calculator' && <CbamCalculatorTab />}
             {activeTab === 'mrl-lookup' && <MrlLookupTab />}
             {activeTab === 'unit-normalizer' && <UnitNormalizerTab />}
-            {activeTab === 'gpt6-astra' && <Gpt6AstraTab />}
           </motion.div>
         </AnimatePresence>
       </main>

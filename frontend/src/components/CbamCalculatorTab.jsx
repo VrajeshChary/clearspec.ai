@@ -18,22 +18,22 @@ import { evaluateCbamFasteners } from '../services/api';
 
 const SCENARIOS = [
   {
+    id: 'compliant',
+    label: 'Scenario A: 2026 Certified Compliant (Pass)',
+    desc: 'Verified precursor SEE (1.95 tCO2e/t) with accredited verifier (TÜV SÜD Europe)',
+    status: 'COMPLIANT'
+  },
+  {
     id: 'missing-see',
-    label: 'Scenario A: Missing Precursor SEE (Block)',
-    desc: 'Wire rod (CN 7213) tonnage present, but Specific Embedded Emissions (SEE) omitted',
+    label: 'Scenario B: Missing Precursor Emissions (Block)',
+    desc: 'Wire rod (CN 7213) tonnage declared, but Specific Embedded Emissions omitted',
     status: 'CRITICAL_BLOCK'
   },
   {
     id: 'unverified',
-    label: 'Scenario B: Unaccredited Verifier (Block)',
-    desc: 'Precursor SEE provided, but lacks an EU-accredited independent verification body',
+    label: 'Scenario C: Unaccredited Verifier (Block)',
+    desc: 'Precursor emissions provided, but lacks an accredited third-party verification body',
     status: 'CRITICAL_BLOCK'
-  },
-  {
-    id: 'compliant',
-    label: 'Scenario C: 2026 Certified Compliant (Pass)',
-    desc: 'Verified precursor SEE (1.95 tCO2e/t) with accredited verifier (TÜV SÜD Europe)',
-    status: 'PASS'
   }
 ];
 
@@ -56,7 +56,7 @@ export default function CbamCalculatorTab() {
   const [error, setError] = useState(null);
   const [activeScenario, setActiveScenario] = useState('compliant');
 
-  // Auto-evaluate on mount so tab is immediately populated
+  // Auto-evaluate on mount
   useEffect(() => {
     handleEvaluate();
   }, []);
@@ -69,12 +69,12 @@ export default function CbamCalculatorTab() {
       const res = await evaluateCbamFasteners({
         shipment_reference: shipmentRef,
         export_cn_code: exportCn,
-        fastener_tonnage: parseFloat(fastenerTonnes),
-        direct_emissions_tco2e: parseFloat(directEmissions),
-        indirect_emissions_tco2e: parseFloat(indirectEmissions),
+        fastener_tonnage: parseFloat(fastenerTonnes) || 10.0,
+        direct_emissions_tco2e: parseFloat(directEmissions) || 0,
+        indirect_emissions_tco2e: parseFloat(indirectEmissions) || 0,
         precursor_wire_rod: {
           cn_code: precursorCn,
-          tonnage_consumed: parseFloat(precursorTonnes),
+          tonnage_consumed: parseFloat(precursorTonnes) || 10.4,
           specific_embedded_emissions_tco2e_per_t: precursorSee !== '' ? parseFloat(precursorSee) : null,
           is_verified: isVerified,
           verifier_accreditation_body: verifierBody.trim() || null,
@@ -126,39 +126,52 @@ export default function CbamCalculatorTab() {
     }
   };
 
+  // Safe numerical calculations
+  const directVal = parseFloat(directEmissions) || 0;
+  const indirectVal = parseFloat(indirectEmissions) || 0;
+  const precTonnesVal = parseFloat(precursorTonnes) || 0;
+  const precSeeVal = precursorSee !== '' ? parseFloat(precursorSee) : null;
+  const precEmissionsVal = precSeeVal !== null ? precTonnesVal * precSeeVal : null;
+
+  const isCompliant = assessment?.status === 'COMPLIANT' || assessment?.compliance_status === 'PASS';
+  const totalEm = assessment?.total_embedded_emissions_tco2e ?? (isCompliant && precEmissionsVal !== null ? (directVal + indirectVal + precEmissionsVal) : null);
+  const seePerT = assessment?.specific_embedded_emissions_tco2e_per_t ?? (totalEm !== null ? totalEm / (parseFloat(fastenerTonnes) || 1) : null);
+
   return (
     <div className="space-y-6">
-      {/* Title & Statutory Header */}
-      <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
+      {/* Title & Plain English Overview */}
+      <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 glass-panel p-6 rounded-2xl relative overflow-hidden">
+        <div className="absolute -right-20 -top-20 w-64 h-64 bg-amber-500/10 rounded-full blur-3xl pointer-events-none" />
         <div>
-          <div className="flex items-center space-x-2">
-            <h2 className="text-2xl sm:text-3xl font-display font-bold text-white tracking-tight">
-              EU CBAM 2026 Carbon Intelligence Terminal
+          <div className="flex items-center space-x-2.5">
+            <h2 className="text-xl sm:text-2xl font-display font-bold text-white tracking-tight">
+              European Carbon Border Tax (EU CBAM)
             </h2>
             <span className="text-xs font-mono px-2.5 py-0.5 rounded-full bg-amber-500/10 text-amber-300 border border-amber-500/30">
-              Definitive Regime
+              Regulation (EU) 2023/956
             </span>
           </div>
-          <p className="text-xs text-slate-400 mt-1">
-            Enforces Regulation (EU) 2023/956 compliance for steel fasteners (CN 731815) and validates mandatory precursor wire rod (CN 7213) Specific Embedded Emissions.
+          <p className="text-xs text-slate-400 mt-1 max-w-3xl leading-relaxed">
+            Starting in 2026, the European Union imposes a carbon tax on imported industrial goods (steel screws, bolts, and fasteners). Indian factories must declare the carbon emissions of both their factory and their raw steel (wire rod). If unverified, the shipment is blocked at European customs.
           </p>
         </div>
 
-        <div className="text-xs font-mono text-slate-300 glass-well p-2.5 rounded-xl border border-white/10 flex items-center space-x-2 self-start md:self-auto">
+        <div className="text-xs font-mono text-slate-300 glass-well p-3 rounded-xl border border-white/10 flex items-center space-x-2.5 self-start md:self-auto shrink-0">
           <Coins className="w-4 h-4 text-emerald-400" />
-          <span>ETS Certificate Reference: </span>
+          <span>EU Carbon Credit Price: </span>
           <strong className="text-emerald-400 font-bold text-sm">€85 / tCO₂e</strong>
         </div>
       </div>
 
-      {/* 1-Click Scenario Preset Strip */}
-      <div className="glass-panel p-3.5 flex flex-wrap items-center gap-2.5">
+      {/* Preset Test Scenarios */}
+      <div className="glass-panel p-4 rounded-xl flex flex-wrap items-center gap-2.5">
         <span className="text-xs font-display font-bold text-slate-400 uppercase tracking-wider mr-1">
-          Preset Scenarios:
+          Test Benchmark Scenarios:
         </span>
         {SCENARIOS.map((s) => (
           <button
             key={s.id}
+            type="button"
             onClick={() => loadScenario(s.id)}
             className={`px-3.5 py-1.5 rounded-lg text-xs font-display flex items-center space-x-2 transition-all ${
               activeScenario === s.id
@@ -171,93 +184,93 @@ export default function CbamCalculatorTab() {
         ))}
       </div>
 
-      {/* Main Grid: Form on Left, Carbon Intelligence Assessment on Right */}
+      {/* Main Grid: Form on Left, Assessment on Right */}
       <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
-        {/* Form Inputs (Cols 1-5) */}
+        {/* Form Inputs */}
         <div className="lg:col-span-5 space-y-4">
-          <form onSubmit={handleEvaluate} className="glass-panel p-6 space-y-4">
-            <h3 className="font-display font-bold text-sm text-white hairline-b pb-3 flex items-center space-x-2">
+          <form onSubmit={handleEvaluate} className="glass-panel p-6 rounded-2xl space-y-4">
+            <h3 className="font-display font-bold text-sm text-white border-b border-white/[0.08] pb-3 flex items-center space-x-2">
               <Flame className="w-4 h-4 text-amber-400" />
-              <span>Export Product: Steel Fasteners (CN 731815)</span>
+              <span>Export Product: Steel Fasteners (HS Code: 731815)</span>
             </h3>
 
             <div className="grid grid-cols-2 gap-3 text-xs">
               <div>
-                <label className="block text-slate-400 text-[11px] mb-1 font-mono">Shipment Reference</label>
+                <label className="block text-slate-400 text-xs font-medium mb-1">Shipment Reference</label>
                 <input
                   type="text"
                   value={shipmentRef}
                   onChange={(e) => setShipmentRef(e.target.value)}
-                  className="w-full bg-slate-950/80 border border-white/10 rounded-lg px-3 py-2 text-xs text-white font-mono focus:border-emerald-500 focus:outline-none"
+                  className="w-full bg-[#070b13] border border-white/10 rounded-xl px-3 py-2 text-xs text-white font-mono focus:border-emerald-500 focus:outline-none"
                 />
               </div>
               <div>
-                <label className="block text-slate-400 text-[11px] mb-1 font-mono">Export CN Code</label>
+                <label className="block text-slate-400 text-xs font-medium mb-1">Export HS / CN Code</label>
                 <input
                   type="text"
                   value={exportCn}
                   onChange={(e) => setExportCn(e.target.value)}
-                  className="w-full bg-slate-950/80 border border-white/10 rounded-lg px-3 py-2 text-xs text-white font-mono focus:border-emerald-500 focus:outline-none"
+                  className="w-full bg-[#070b13] border border-white/10 rounded-xl px-3 py-2 text-xs text-white font-mono focus:border-emerald-500 focus:outline-none"
                 />
               </div>
             </div>
 
             <div className="grid grid-cols-3 gap-2 text-xs">
               <div>
-                <label className="block text-slate-400 text-[11px] mb-1 font-mono">Net Tonnes</label>
+                <label className="block text-slate-400 text-xs font-medium mb-1">Net Weight (Tonnes)</label>
                 <input
                   type="number"
                   step="0.1"
                   value={fastenerTonnes}
                   onChange={(e) => setFastenerTonnes(e.target.value)}
-                  className="w-full bg-slate-950/80 border border-white/10 rounded-lg px-3 py-2 text-xs text-white font-mono focus:border-emerald-500 focus:outline-none"
+                  className="w-full bg-[#070b13] border border-white/10 rounded-xl px-3 py-2 text-xs text-white font-mono focus:border-emerald-500 focus:outline-none"
                 />
               </div>
               <div>
-                <label className="block text-slate-400 text-[11px] mb-1 font-mono">Direct tCO₂e</label>
+                <label className="block text-slate-400 text-xs font-medium mb-1">Factory Direct CO₂</label>
                 <input
                   type="number"
                   step="0.1"
                   value={directEmissions}
                   onChange={(e) => setDirectEmissions(e.target.value)}
-                  className="w-full bg-slate-950/80 border border-white/10 rounded-lg px-3 py-2 text-xs text-white font-mono focus:border-emerald-500 focus:outline-none"
+                  className="w-full bg-[#070b13] border border-white/10 rounded-xl px-3 py-2 text-xs text-white font-mono focus:border-emerald-500 focus:outline-none"
                 />
               </div>
               <div>
-                <label className="block text-slate-400 text-[11px] mb-1 font-mono">Indirect tCO₂e</label>
+                <label className="block text-slate-400 text-xs font-medium mb-1">Electricity Indirect CO₂</label>
                 <input
                   type="number"
                   step="0.1"
                   value={indirectEmissions}
                   onChange={(e) => setIndirectEmissions(e.target.value)}
-                  className="w-full bg-slate-950/80 border border-white/10 rounded-lg px-3 py-2 text-xs text-white font-mono focus:border-emerald-500 focus:outline-none"
+                  className="w-full bg-[#070b13] border border-white/10 rounded-xl px-3 py-2 text-xs text-white font-mono focus:border-emerald-500 focus:outline-none"
                 />
               </div>
             </div>
 
-            <h3 className="font-display font-bold text-sm text-white hairline-b pb-2 pt-2 flex items-center space-x-2">
+            <h3 className="font-display font-bold text-sm text-white border-b border-white/[0.08] pb-2 pt-2 flex items-center space-x-2">
               <Scale className="w-4 h-4 text-emerald-400" />
-              <span>Precursor Material: Wire Rod (CN 7213)</span>
+              <span>Raw Material Input: Steel Wire Rod (HS: 7213)</span>
             </h3>
 
             <div className="grid grid-cols-2 gap-3 text-xs">
               <div>
-                <label className="block text-slate-400 text-[11px] mb-1 font-mono">Wire Rod CN Code</label>
+                <label className="block text-slate-400 text-xs font-medium mb-1">Wire Rod HS Code</label>
                 <input
                   type="text"
                   value={precursorCn}
                   onChange={(e) => setPrecursorCn(e.target.value)}
-                  className="w-full bg-slate-950/80 border border-white/10 rounded-lg px-3 py-2 text-xs text-white font-mono"
+                  className="w-full bg-[#070b13] border border-white/10 rounded-xl px-3 py-2 text-xs text-white font-mono"
                 />
               </div>
               <div>
-                <label className="block text-slate-400 text-[11px] mb-1 font-mono">Wire Rod Tonnes Consumed</label>
+                <label className="block text-slate-400 text-xs font-medium mb-1">Wire Rod Consumed (Tonnes)</label>
                 <input
                   type="number"
                   step="0.1"
                   value={precursorTonnes}
                   onChange={(e) => setPrecursorTonnes(e.target.value)}
-                  className="w-full bg-slate-950/80 border border-white/10 rounded-lg px-3 py-2 text-xs text-white font-mono"
+                  className="w-full bg-[#070b13] border border-white/10 rounded-xl px-3 py-2 text-xs text-white font-mono"
                 />
               </div>
             </div>
@@ -265,16 +278,16 @@ export default function CbamCalculatorTab() {
             <div className="text-xs space-y-2.5">
               <div>
                 <div className="flex items-center justify-between mb-1">
-                  <label className="text-slate-400 text-[11px] font-mono">Specific Embedded Emissions (tCO₂e/t)</label>
-                  <span className="text-[10px] text-amber-400 font-mono">Mandatory under 2026 rules</span>
+                  <label className="text-slate-400 text-xs font-medium">Raw Steel Carbon Intensity (tCO₂e / Tonne)</label>
+                  <span className="text-[10px] text-amber-400 font-mono">Mandatory under 2026 EU law</span>
                 </div>
                 <input
                   type="number"
                   step="0.01"
                   value={precursorSee}
                   onChange={(e) => setPrecursorSee(e.target.value)}
-                  placeholder="e.g. 1.95 (Leave empty to test 2026 Block)"
-                  className="w-full bg-slate-950/80 border border-white/10 rounded-lg px-3 py-2 text-xs text-white font-mono"
+                  placeholder="e.g. 1.95 (Leave empty to test missing data block)"
+                  className="w-full bg-[#070b13] border border-white/10 rounded-xl px-3 py-2 text-xs text-white font-mono"
                 />
               </div>
 
@@ -287,18 +300,18 @@ export default function CbamCalculatorTab() {
                   className="w-4 h-4 rounded border-white/20 bg-slate-900 text-emerald-600 focus:ring-0"
                 />
                 <label htmlFor="cbam-verified" className="text-xs text-slate-200 select-none font-medium">
-                  Third-party EU Accredited Verifier Verified
+                  Verified by EU-Accredited Independent Auditor
                 </label>
               </div>
 
               <div>
-                <label className="block text-slate-400 text-[11px] mb-1 font-mono">Verifier Accreditation Body</label>
+                <label className="block text-slate-400 text-xs font-medium mb-1">Accredited Auditor Name</label>
                 <input
                   type="text"
                   value={verifierBody}
                   onChange={(e) => setVerifierBody(e.target.value)}
                   placeholder="e.g. TÜV SÜD Europe / DNV"
-                  className="w-full bg-slate-950/80 border border-white/10 rounded-lg px-3 py-2 text-xs text-white font-mono"
+                  className="w-full bg-[#070b13] border border-white/10 rounded-xl px-3 py-2 text-xs text-white font-mono"
                 />
               </div>
             </div>
@@ -309,25 +322,29 @@ export default function CbamCalculatorTab() {
               className="w-full btn-emerald py-3 text-xs font-bold flex items-center justify-center space-x-2 shadow-lg"
             >
               <Zap className="w-4 h-4" />
-              <span>{loading ? 'Evaluating Carbon Compliance...' : 'Evaluate 2026 CBAM Compliance'}</span>
+              <span>{loading ? 'Evaluating Carbon Compliance...' : 'Calculate EU Carbon Border Compliance'}</span>
             </button>
           </form>
         </div>
 
-        {/* Assessment Ledger (Cols 6-12) */}
+        {/* Assessment Ledger */}
         <div className="lg:col-span-7 space-y-4">
           {error && (
-            <div className="glass-panel p-4 bg-rose-950/40 border-rose-800 text-rose-300 text-xs">
+            <div className="glass-panel p-4 bg-rose-950/40 border border-rose-800 text-rose-300 text-xs rounded-xl">
               <strong>Evaluation Error:</strong> {error}
             </div>
           )}
 
-          {assessment ? (
-            <div className="glass-panel p-6 space-y-5">
+          {assessment && (
+            <motion.div
+              initial={{ opacity: 0, y: 10 }}
+              animate={{ opacity: 1, y: 0 }}
+              className="glass-panel p-6 rounded-2xl space-y-5"
+            >
               {/* Verdict Header */}
-              <div className="flex items-center justify-between hairline-b pb-4">
+              <div className="flex items-center justify-between border-b border-white/[0.08] pb-4">
                 <div className="flex items-center space-x-3">
-                  {assessment.compliance_status === 'PASS' ? (
+                  {isCompliant ? (
                     <div className="w-10 h-10 rounded-xl bg-emerald-500/20 border border-emerald-500/40 flex items-center justify-center text-emerald-400 shadow-[0_0_15px_rgba(16,185,129,0.3)]">
                       <CheckCircle2 className="w-6 h-6" />
                     </div>
@@ -338,65 +355,59 @@ export default function CbamCalculatorTab() {
                   )}
                   <div>
                     <h3 className="font-display font-bold text-base text-white">
-                      CBAM Assessment Verdict: {assessment.compliance_status}
+                      European Customs Verdict: {isCompliant ? 'APPROVED (COMPLIANT)' : 'CRITICAL EXPORT BLOCK'}
                     </h3>
-                    <p className="text-xs text-slate-400 font-mono">{assessment.regulation_reference}</p>
+                    <p className="text-xs text-slate-400 font-mono">Reference: Regulation (EU) 2023/956</p>
                   </div>
                 </div>
 
                 <span
                   className={`px-3 py-1 rounded-full text-xs font-mono font-bold ${
-                    assessment.compliance_status === 'PASS'
-                      ? 'badge-pass'
-                      : 'badge-critical'
+                    isCompliant ? 'badge-pass' : 'badge-critical'
                   }`}
                 >
-                  {assessment.compliance_status}
+                  {isCompliant ? 'STATUTORY PASS' : 'CRITICAL_BLOCK'}
                 </span>
               </div>
 
               {/* Regulatory Reason Alert */}
               <div
                 className={`p-4 rounded-xl text-xs leading-relaxed border ${
-                  assessment.compliance_status === 'PASS'
-                    ? 'bg-emerald-950/30 border-emerald-500/40 text-emerald-200'
-                    : 'bg-rose-950/30 border-rose-500/40 text-rose-200'
+                  isCompliant
+                    ? 'bg-emerald-500/10 border-emerald-500/30 text-emerald-200'
+                    : 'bg-rose-500/10 border-rose-500/30 text-rose-200'
                 }`}
               >
-                {assessment.reason}
+                {assessment.compliance_summary || assessment.critical_blocks?.[0] || 'Assessment completed.'}
               </div>
 
-              {/* Emissions & Financial Exposure Matrix */}
+              {/* Emissions Matrix */}
               <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 text-xs">
-                <div className="glass-well p-3.5 space-y-1">
-                  <span className="text-[10px] text-slate-400 block font-mono">Direct Emissions</span>
+                <div className="glass-well p-3.5 space-y-1 rounded-xl">
+                  <span className="text-[10px] text-slate-400 block font-mono">Factory Direct CO₂</span>
                   <span className="font-mono font-bold text-sm text-white block">
-                    {assessment.direct_emissions_tco2e.toFixed(2)} tCO₂e
+                    {directVal.toFixed(2)} tCO₂e
                   </span>
                 </div>
 
-                <div className="glass-well p-3.5 space-y-1">
-                  <span className="text-[10px] text-slate-400 block font-mono">Indirect Emissions</span>
+                <div className="glass-well p-3.5 space-y-1 rounded-xl">
+                  <span className="text-[10px] text-slate-400 block font-mono">Electricity Indirect CO₂</span>
                   <span className="font-mono font-bold text-sm text-white block">
-                    {assessment.indirect_emissions_tco2e.toFixed(2)} tCO₂e
+                    {indirectVal.toFixed(2)} tCO₂e
                   </span>
                 </div>
 
-                <div className="glass-well p-3.5 space-y-1 border border-emerald-500/30">
-                  <span className="text-[10px] text-emerald-300 block font-mono">Precursor Embedded</span>
+                <div className="glass-well p-3.5 space-y-1 rounded-xl border border-emerald-500/30">
+                  <span className="text-[10px] text-emerald-300 block font-mono">Raw Steel Carbon</span>
                   <span className="font-mono font-bold text-sm text-emerald-400 block">
-                    {assessment.precursor_embedded_emissions_tco2e !== null
-                      ? `${assessment.precursor_embedded_emissions_tco2e.toFixed(2)} tCO₂e`
-                      : 'UNSPECIFIED'}
+                    {precEmissionsVal !== null ? `${precEmissionsVal.toFixed(2)} tCO₂e` : 'MISSING (BLOCKED)'}
                   </span>
                 </div>
 
-                <div className="glass-well p-3.5 space-y-1 border border-amber-500/30">
-                  <span className="text-[10px] text-amber-300 block font-mono">Total Embedded</span>
+                <div className="glass-well p-3.5 space-y-1 rounded-xl border border-amber-500/30">
+                  <span className="text-[10px] text-amber-300 block font-mono">Total Consignment Carbon</span>
                   <span className="font-mono font-bold text-sm text-amber-400 block">
-                    {assessment.total_embedded_emissions_tco2e !== null
-                      ? `${assessment.total_embedded_emissions_tco2e.toFixed(2)} tCO₂e`
-                      : 'N/A'}
+                    {totalEm !== null ? `${totalEm.toFixed(2)} tCO₂e` : 'BLOCKED'}
                   </span>
                 </div>
               </div>
@@ -404,57 +415,41 @@ export default function CbamCalculatorTab() {
               {/* Specific Embedded Emissions per Tonne & Cost Modeling */}
               <div className="glass-well p-5 rounded-xl border border-white/10 space-y-4">
                 <div className="flex items-center justify-between text-xs">
-                  <span className="text-slate-400 font-mono">Specific Embedded Emissions (Fastener):</span>
+                  <span className="text-slate-400 font-mono">Carbon Intensity per Tonne of Screws/Fasteners:</span>
                   <span className="font-mono font-bold text-base text-white">
-                    {assessment.specific_embedded_emissions_tco2e_per_t !== null
-                      ? `${assessment.specific_embedded_emissions_tco2e_per_t.toFixed(3)} tCO₂e / t`
-                      : 'BLOCKED'}
+                    {seePerT !== null ? `${seePerT.toFixed(3)} tCO₂e / t` : 'BLOCKED'}
                   </span>
                 </div>
 
-                {assessment.compliance_status === 'PASS' && assessment.cbam_certificate_cost_eur && (
-                  <div className="hairline-t pt-4 flex items-center justify-between text-xs">
+                {isCompliant && totalEm !== null && (
+                  <div className="border-t border-white/[0.08] pt-4 flex items-center justify-between text-xs">
                     <div>
-                      <span className="text-slate-300 font-medium block">Estimated CBAM Certificate Obligation:</span>
-                      <span className="text-[11px] text-slate-500 font-mono">Based on €85 / certificate ETS pricing</span>
+                      <span className="text-slate-300 font-medium block">Estimated EU Carbon Certificate Cost:</span>
+                      <span className="text-[11px] text-slate-500 font-mono">Calculated at statutory €85 / certificate price</span>
                     </div>
                     <div className="text-right">
                       <span className="font-mono font-bold text-lg text-emerald-400 block drop-shadow">
-                        €{assessment.cbam_certificate_cost_eur.toLocaleString('en-US', { maximumFractionDigits: 0 })} EUR
+                        €{Math.round(totalEm * 85).toLocaleString('en-US')} EUR
                       </span>
                       <span className="text-xs font-mono text-slate-400">
-                        ≈ ₹{(assessment.cbam_certificate_cost_eur * 90).toLocaleString('en-IN', { maximumFractionDigits: 0 })} INR
+                        ≈ ₹{Math.round(totalEm * 85 * 90).toLocaleString('en-IN')} INR
                       </span>
                     </div>
                   </div>
                 )}
               </div>
 
-              {/* 2026 Definitive Regime Rules Box */}
+              {/* Simple Layman Explanation Box */}
               <div className="text-xs text-slate-400 space-y-1.5 glass-well p-4 rounded-xl border border-white/10">
                 <div className="flex items-center space-x-2 text-white font-semibold">
                   <Info className="w-4 h-4 text-emerald-400" />
-                  <span>2026 EU CBAM Definitive Transition Note:</span>
+                  <span>Why this matters to Indian Exporters:</span>
                 </div>
-                <p className="text-[11px] leading-relaxed font-mono">
-                  Starting January 1, 2026, transitional defaults and standard values are strictly prohibited. Non-EU fastener manufacturers must prove real, independently verified Specific Embedded Emissions for all precursor inputs (wire rod CN 7213) to clear European customs.
+                <p className="text-[11px] leading-relaxed">
+                  Under the European Union's 2026 green laws, Indian factories cannot use average guesses or default numbers. If you do not provide third-party verified carbon numbers for the raw steel used to make your screws or bolts, European ports will seize the shipment. ClearSpec calculates the exact compliance score before your cargo leaves.
                 </p>
               </div>
-            </div>
-          ) : (
-            <div className="glass-panel p-12 flex flex-col items-center justify-center text-center space-y-3 border-dashed">
-              <Flame className="w-10 h-10 text-slate-500" />
-              <h4 className="font-display font-bold text-white">No CBAM Assessment Run Yet</h4>
-              <p className="text-xs text-slate-400 max-w-sm">
-                Select one of the preset benchmark scenarios above or enter your shipment parameters to audit 2026 CBAM readiness.
-              </p>
-              <button
-                onClick={() => handleEvaluate()}
-                className="btn-emerald px-5 py-2.5 text-xs"
-              >
-                Run Preset Assessment
-              </button>
-            </div>
+            </motion.div>
           )}
         </div>
       </div>

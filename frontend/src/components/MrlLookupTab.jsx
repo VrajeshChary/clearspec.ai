@@ -66,6 +66,7 @@ export default function MrlLookupTab() {
       setLoading(true);
       setError(null);
       const res = await lookupChemicalMrl({
+        hs_code: hsInput,
         raw_hs_code: hsInput,
         cas_number: casInput.trim() || null,
         chemical_alias: aliasInput.trim() || null,
