@@ -1,7 +1,10 @@
 # Environment variables
 .env
 .env.*
+backend/.env
+backend/.env.*
 !.env.example
+!backend/.env.example
 
 # Python
 .venv/
@@ -19,15 +22,18 @@ htmlcov/
 dist/
 build/
 *.egg-info/
+scratch/
 
 # Node / Frontend
 node_modules/
+frontend/node_modules/
 npm-debug.log*
 yarn-debug.log*
 yarn-error.log*
 pnpm-debug.log*
 .dist/
 frontend/dist/
+.vite/
 
 # IDE / OS / Tooling
 .idea/

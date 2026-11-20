@@ -64,3 +64,24 @@ export async function evaluateCbamFasteners(payload) {
   }
   return res.json();
 }
+
+export async function verifyAstraKey(payload) {
+  const res = await fetch(`${API_BASE}/gpt6-astra/verify-key`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(payload),
+  });
+  if (!res.ok) {
+    const errorData = await res.json().catch(() => ({}));
+    throw new Error(errorData.detail || 'Failed to verify key');
+  }
+  return res.json();
+}
+
+export async function getAstraCapabilities() {
+  const res = await fetch(`${API_BASE}/gpt6-astra/capabilities`);
+  if (!res.ok) {
+    throw new Error('Failed to fetch capabilities');
+  }
+  return res.json();
+}

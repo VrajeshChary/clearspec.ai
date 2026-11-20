@@ -13,6 +13,7 @@ from .routers import (
     sample_pdf,
     visual_card,
     live_voice,
+    gpt6_astra,
 )
 
 app = FastAPI(
@@ -37,10 +38,18 @@ app.include_router(consignment_audit.router, prefix=settings.api_v1_str)
 app.include_router(sample_pdf.router, prefix=settings.api_v1_str)
 app.include_router(visual_card.router, prefix=settings.api_v1_str)
 app.include_router(live_voice.router, prefix=settings.api_v1_str)
+app.include_router(gpt6_astra.router, prefix=settings.api_v1_str)
 
 @app.get("/health")
 def health_check():
     return {"status": "healthy"}
+
+@app.get("/astra")
+def serve_astra_tester():
+    html_file = Path(__file__).resolve().parent.parent.parent / "gpt6_astra_tester.html"
+    if html_file.is_file():
+        return FileResponse(str(html_file))
+    raise HTTPException(status_code=404, detail="Tester HTML not found")
 
 # Frontend static distribution discovery
 _POSSIBLE_DIST_DIRS = [

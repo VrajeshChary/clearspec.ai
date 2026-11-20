@@ -1,11 +1,12 @@
 import React from 'react';
-import { ShieldCheck, Scale, Database, Flame, FileSearch } from 'lucide-react';
+import { ShieldCheck, Scale, Database, Flame, FileSearch, Sparkles } from 'lucide-react';
 
 export default function Navbar({ activeTab, setActiveTab }) {
   const manualTools = [
     { id: 'unit-normalizer', label: 'Unit Normalizer', icon: Scale },
     { id: 'mrl-lookup',      label: 'EU MRL Lookup',   icon: Database },
     { id: 'cbam-calculator', label: 'CBAM 2026',       icon: Flame },
+    { id: 'gpt6-astra',      label: 'GPT-6 Astra Hub', icon: Sparkles },
   ];
 
   return (

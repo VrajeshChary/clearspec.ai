@@ -4,6 +4,7 @@ import UnitNormalizerTab from './components/UnitNormalizerTab';
 import ConsignmentAuditTab from './components/ConsignmentAuditTab';
 import MrlLookupTab from './components/MrlLookupTab';
 import CbamCalculatorTab from './components/CbamCalculatorTab';
+import Gpt6AstraTab from './components/Gpt6AstraTab';
 
 export default function App() {
   const [activeTab, setActiveTab] = useState('consignment-audit');
@@ -23,6 +24,7 @@ export default function App() {
         {activeTab === 'unit-normalizer'   && <UnitNormalizerTab />}
         {activeTab === 'mrl-lookup'        && <MrlLookupTab />}
         {activeTab === 'cbam-calculator'   && <CbamCalculatorTab />}
+        {activeTab === 'gpt6-astra'        && <Gpt6AstraTab />}
         {activeTab === 'consignment-audit' && <ConsignmentAuditTab />}
       </main>
 
