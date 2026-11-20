@@ -1,16 +1,194 @@
+/* hallmark: dusk/modern-minimal | shape: workbench | signature: forensic-document-loupe */
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
 
-body {
-  margin: 0;
-  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, 'Open Sans', 'Helvetica Neue', sans-serif;
-  background-color: #0f172a;
-  color: #f8fafc;
+/* ─────────────────────────────────────────────────────────────────────────────
+   HALLMARK DESIGN SYSTEM: CLEARSPEC AI REGULATORY COMMAND ENGINE
+   Display: Familjen Grotesk | Body: IBM Plex Sans | Mono: JetBrains Mono
+   Palette: Dusk / Dark Slate-Emerald ("very light dark like our previous green")
+───────────────────────────────────────────────────────────────────────────── */
+
+:root {
+  /* Slate & Forest Paper Surfaces */
+  --color-paper: #0a1110;
+  --color-paper-2: #101a18;
+  --color-paper-3: #152421;
+  --color-paper-card: #121e1c;
+  --color-paper-well: #0c1513;
+
+  /* Ink & Typography */
+  --color-ink: #f0fdf4;
+  --color-ink-2: #d1fae5;
+  --color-muted: #8da49e;
+  --color-faint: #566c66;
+
+  /* Precision Regulatory Hairlines (emerald-tinted) */
+  --color-rule: rgba(52, 211, 153, 0.12);
+  --color-rule-subtle: rgba(52, 211, 153, 0.06);
+  --color-rule-strong: rgba(52, 211, 153, 0.24);
+
+  /* Signals: Regulatory Enforcement Tints */
+  --color-emerald: #10b981;
+  --color-emerald-glow: rgba(16, 185, 129, 0.22);
+  --color-amber: #f59e0b;
+  --color-amber-glow: rgba(245, 158, 11, 0.25);
+  --color-vermilion: #ef4444;
+  --color-vermilion-glow: rgba(239, 68, 68, 0.28);
+
+  /* Typography Scales */
+  --font-display: "Familjen Grotesk", system-ui, -apple-system, sans-serif;
+  --font-body: "IBM Plex Sans", system-ui, -apple-system, sans-serif;
+  --font-mono: "JetBrains Mono", ui-monospace, monospace;
+
+  /* Spacing & Radii */
+  --radius-card: 10px;
+  --radius-panel: 14px;
+  --radius-input: 6px;
+  --radius-pill: 9999px;
+
+  /* Shadows */
+  --shadow-key: 0 2px 0 0 rgba(0, 0, 0, 0.5);
+  --shadow-card: 0 8px 30px -10px rgba(0, 0, 0, 0.6), 0 0 0 1px var(--color-rule);
 }
 
-@keyframes pulse-box {
-  0%   { box-shadow: 0 0 0 0px var(--pulse-color, #f59e0b); }
+html, body {
+  overflow-x: clip;
+  background-color: var(--color-paper);
+  color: var(--color-ink);
+  font-family: var(--font-body);
+  letter-spacing: -0.011em;
+}
+
+h1, h2, h3, h4, .font-display {
+  font-family: var(--font-display);
+  letter-spacing: -0.025em;
+  font-weight: 600;
+  text-wrap: balance;
+}
+
+code, pre, .font-mono, .tabular-nums {
+  font-family: var(--font-mono);
+  font-variant-numeric: tabular-nums;
+}
+
+/* Accessible focus ring */
+:focus-visible {
+  outline: 2px solid var(--color-emerald);
+  outline-offset: 2px;
+}
+
+/* Reduced motion support */
+@media (prefers-reduced-motion: reduce) {
+  *, ::before, ::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
+}
+
+/* Tactile Keycap Buttons (Hallmark tactile register) */
+.keycap-btn {
+  position: relative;
+  border: 1px solid var(--color-rule-strong);
+  border-radius: var(--radius-input);
+  background: var(--color-paper-3);
+  color: var(--color-ink);
+  box-shadow: 0 2px 0 0 rgba(0, 0, 0, 0.5);
+  transition: transform 0.1s ease, box-shadow 0.1s ease, background-color 0.15s ease;
+}
+
+.keycap-btn:hover {
+  transform: translateY(-1px);
+  box-shadow: 0 3px 0 0 rgba(0, 0, 0, 0.6);
+  background: #192b27;
+}
+
+.keycap-btn:active {
+  transform: translateY(1px);
+  box-shadow: 0 0 0 0 rgba(0, 0, 0, 0.5);
+}
+
+.keycap-btn-primary {
+  background: #059669;
+  border-color: #047857;
+  color: #ffffff;
+  box-shadow: 0 2px 0 0 #064e3b;
+}
+
+.keycap-btn-primary:hover {
+  background: #10b981;
+  transform: translateY(-1px);
+  box-shadow: 0 3px 0 0 #047857;
+}
+
+.keycap-btn-primary:active {
+  transform: translateY(1px);
+  box-shadow: 0 0 0 0 #064e3b;
+}
+
+/* Precision Regulatory Card */
+.reg-card {
+  background: var(--color-paper-card);
+  color: var(--color-ink);
+  border: 1px solid var(--color-rule);
+  border-radius: var(--radius-panel);
+  box-shadow: var(--shadow-card);
+}
+
+.reg-card-subtle {
+  background: var(--color-paper-well);
+  color: var(--color-ink);
+  border: 1px solid var(--color-rule-subtle);
+  border-radius: var(--radius-card);
+}
+
+/* Hairline ruled grid */
+.hairline-b {
+  border-bottom: 1px solid var(--color-rule);
+}
+.hairline-t {
+  border-top: 1px solid var(--color-rule);
+}
+.hairline-r {
+  border-right: 1px solid var(--color-rule);
+}
+.hairline-l {
+  border-left: 1px solid var(--color-rule);
+}
+
+/* Laser pulse animations */
+@keyframes pulse-laser {
+  0%   { box-shadow: 0 0 0 0px var(--pulse-color, rgba(239, 68, 68, 0.7)); }
   50%  { box-shadow: 0 0 0 8px transparent; }
   100% { box-shadow: 0 0 0 0px transparent; }
+}
+
+/* Audio wave with scaleY (no height animation per Hallmark rule 10a) */
+@keyframes audio-wave-scale {
+  0%, 100% { transform: scaleY(0.25); }
+  50% { transform: scaleY(1); }
+}
+
+.audio-bar-1 { transform-origin: bottom; animation: audio-wave-scale 0.7s ease-in-out infinite; }
+.audio-bar-2 { transform-origin: bottom; animation: audio-wave-scale 0.9s ease-in-out infinite 0.15s; }
+.audio-bar-3 { transform-origin: bottom; animation: audio-wave-scale 0.6s ease-in-out infinite 0.3s; }
+.audio-bar-4 { transform-origin: bottom; animation: audio-wave-scale 1.1s ease-in-out infinite 0.1s; }
+.audio-bar-5 { transform-origin: bottom; animation: audio-wave-scale 0.8s ease-in-out infinite 0.25s; }
+
+/* Custom Scrollbars */
+::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+::-webkit-scrollbar-track {
+  background: var(--color-paper-2);
+}
+::-webkit-scrollbar-thumb {
+  background: rgba(52, 211, 153, 0.2);
+  border-radius: 4px;
+}
+::-webkit-scrollbar-thumb:hover {
+  background: rgba(52, 211, 153, 0.35);
 }

@@ -1,5 +1,16 @@
 import React, { useState } from 'react';
-import { AlertTriangle, CheckCircle2, XCircle, ArrowRight, Info } from 'lucide-react';
+import {
+  Scale,
+  AlertTriangle,
+  CheckCircle2,
+  XCircle,
+  ArrowRight,
+  Info,
+  Zap,
+  HelpCircle,
+  ShieldAlert,
+  Sliders
+} from 'lucide-react';
 import { normalizeUnit, evaluateLabReport } from '../services/api';
 
 export default function UnitNormalizerTab() {
@@ -19,7 +30,7 @@ export default function UnitNormalizerTab() {
   const [error, setError] = useState(null);
 
   const handleQuickConvert = async (e) => {
-    e.preventDefault();
+    if (e) e.preventDefault();
     try {
       setError(null);
       const res = await normalizeUnit(val, unit);
@@ -30,7 +41,7 @@ export default function UnitNormalizerTab() {
   };
 
   const handleEvaluateTrap = async (e) => {
-    e.preventDefault();
+    if (e) e.preventDefault();
     try {
       setLoading(true);
       setError(null);
@@ -70,206 +81,259 @@ export default function UnitNormalizerTab() {
   };
 
   return (
-    <div className="space-y-8">
+    <div className="space-y-6">
+      {/* Title & Overview */}
       <div>
-        <h2 className="text-2xl font-bold text-white tracking-tight">Unit Normalizer & BLQ Sensitivity Guard</h2>
-        <p className="text-slate-400 mt-1">
-          Standardizes chemical residue test units into canonical <span className="text-emerald-400 font-mono">mg/kg</span> and prevents export rejections from the <strong className="text-amber-400">"BLQ &gt; MRL Trap"</strong>.
+        <div className="flex items-center space-x-2">
+          <h2 className="text-xl sm:text-2xl font-display font-bold text-white tracking-tight">
+            Unit Normalizer & Sensitivity Trap Simulator
+          </h2>
+          <span className="text-xs font-mono px-2 py-0.5 rounded bg-emerald-950/80 text-emerald-300 border border-emerald-800">
+            Python Pint Engine
+          </span>
+        </div>
+        <p className="text-xs text-muted mt-1">
+          Normalizes chemical and pesticide test units (<code className="text-emerald-400">ppb</code>, <code className="text-emerald-400">ppm</code>, <code className="text-emerald-400">ug/kg</code>, <code className="text-emerald-400">% w/w</code>) to canonical <code className="text-emerald-400 font-bold">mg/kg</code> and enforces the statutory <strong>BLQ &gt; MRL Sensitivity Trap Check</strong>.
         </p>
       </div>
 
-      {error && (
-        <div className="p-4 bg-rose-500/10 border border-rose-500/30 text-rose-300 rounded-lg text-sm">
-          {error}
-        </div>
-      )}
+      {/* TOOL 1: UNIVERSAL UNIT CONVERTER */}
+      <div className="reg-card p-5 space-y-4">
+        <h3 className="font-display font-semibold text-sm text-white hairline-b pb-2 flex items-center space-x-2">
+          <Scale className="w-4 h-4 text-emerald-400" />
+          <span>Universal Regulatory Unit Converter</span>
+        </h3>
 
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
-        {/* Quick Normalizer */}
-        <div className="bg-slate-950 border border-slate-800 rounded-xl p-6 flex flex-col justify-between">
+        <form onSubmit={handleQuickConvert} className="grid grid-cols-1 sm:grid-cols-12 gap-3 items-end text-xs">
+          <div className="sm:col-span-5">
+            <label className="block text-muted text-[11px] mb-1">Magnitude / Reading</label>
+            <input
+              type="number"
+              step="any"
+              value={val}
+              onChange={(e) => setVal(e.target.value)}
+              className="w-full bg-paper-well border border-rule rounded px-3 py-2 text-xs font-mono text-white focus:border-emerald-500"
+            />
+          </div>
+
+          <div className="sm:col-span-4">
+            <label className="block text-muted text-[11px] mb-1">Source Unit</label>
+            <select
+              value={unit}
+              onChange={(e) => setUnit(e.target.value)}
+              className="w-full bg-paper-well border border-rule rounded px-3 py-2 text-xs text-white"
+            >
+              <option value="ug/kg">µg/kg (Micrograms per kilogram)</option>
+              <option value="ppb">ppb (Parts per billion)</option>
+              <option value="ppm">ppm (Parts per million)</option>
+              <option value="mg/kg">mg/kg (Milligrams per kilogram)</option>
+              <option value="g/kg">g/kg (Grams per kilogram)</option>
+              <option value="% w/w">% w/w (Percent weight by weight)</option>
+            </select>
+          </div>
+
+          <div className="sm:col-span-3">
+            <button
+              type="submit"
+              className="w-full keycap-btn keycap-btn-primary py-2 text-xs font-semibold flex items-center justify-center space-x-1"
+            >
+              <span>Convert to mg/kg</span>
+              <ArrowRight className="w-3.5 h-3.5" />
+            </button>
+          </div>
+        </form>
+
+        {conversionResult && (
+          <div className="bg-paper-well p-4 rounded-lg border border-rule flex flex-col sm:flex-row sm:items-center justify-between gap-3 text-xs animate-in fade-in duration-150">
+            <div className="space-y-1">
+              <span className="text-muted block text-[11px]">Normalized Canonical Result:</span>
+              <div className="flex items-baseline space-x-2">
+                <span className="font-mono font-bold text-lg text-emerald-400">
+                  {conversionResult.canonical_value_mg_kg} mg/kg
+                </span>
+                <span className="text-muted text-xs">
+                  (from {conversionResult.source_value} {conversionResult.source_unit})
+                </span>
+              </div>
+            </div>
+
+            <div className="text-right text-[11px] text-muted font-mono bg-paper-3 px-3 py-1.5 rounded border border-rule">
+              Factor: 1 {conversionResult.source_unit} = {conversionResult.conversion_factor_to_mg_kg} mg/kg
+            </div>
+          </div>
+        )}
+      </div>
+
+      {/* TOOL 2: BLQ > MRL SENSITIVITY TRAP SIMULATOR */}
+      <div className="reg-card p-5 space-y-4">
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 hairline-b pb-3">
           <div>
-            <h3 className="text-lg font-semibold text-slate-200 mb-4 flex items-center gap-2">
-              <span className="w-2 h-2 rounded-full bg-emerald-400"></span>
-              Canonical Unit Converter
+            <h3 className="font-display font-semibold text-sm text-white flex items-center space-x-2">
+              <AlertTriangle className="w-4 h-4 text-amber-400" />
+              <span>The "BLQ &gt; MRL" Sensitivity Trap Simulator</span>
             </h3>
-            <form onSubmit={handleQuickConvert} className="space-y-4">
-              <div className="grid grid-cols-2 gap-3">
-                <div>
-                  <label className="block text-xs font-medium text-slate-400 mb-1">Concentration Value</label>
-                  <input
-                    type="number"
-                    step="any"
-                    value={val}
-                    onChange={(e) => setVal(e.target.value)}
-                    className="w-full bg-slate-900 border border-slate-700 rounded-lg px-3 py-2 text-white focus:outline-none focus:border-emerald-500"
-                    required
-                  />
-                </div>
-                <div>
-                  <label className="block text-xs font-medium text-slate-400 mb-1">Source Unit</label>
-                  <select
-                    value={unit}
-                    onChange={(e) => setUnit(e.target.value)}
-                    className="w-full bg-slate-900 border border-slate-700 rounded-lg px-3 py-2 text-white focus:outline-none focus:border-emerald-500"
-                  >
-                    <option value="ug/kg">ug/kg (ppb)</option>
-                    <option value="ppb">ppb</option>
-                    <option value="ppm">ppm (mg/kg)</option>
-                    <option value="% w/w">% w/w</option>
-                    <option value="g/kg">g/kg</option>
-                    <option value="mg/kg">mg/kg</option>
-                  </select>
-                </div>
-              </div>
-              <button
-                type="submit"
-                className="w-full bg-emerald-600 hover:bg-emerald-500 text-white font-medium py-2 rounded-lg transition-colors flex items-center justify-center gap-2 text-sm"
-              >
-                Normalize to mg/kg <ArrowRight className="w-4 h-4" />
-              </button>
-            </form>
+            <p className="text-[11px] text-muted mt-0.5">
+              Simulates laboratory LOQ inadequacy against EU border regulations.
+            </p>
           </div>
 
-          {conversionResult && (
-            <div className="mt-6 p-4 rounded-lg bg-emerald-500/10 border border-emerald-500/20">
-              <div className="text-xs text-emerald-400 font-semibold uppercase tracking-wider">Canonical Result</div>
-              <div className="text-2xl font-bold text-white mt-1 font-mono">
-                {conversionResult.canonical_value_mg_kg} <span className="text-sm font-normal text-slate-400">mg/kg</span>
-              </div>
-              <div className="text-xs text-slate-400 mt-1">
-                Converted {conversionResult.input_value} {conversionResult.input_unit}
-              </div>
-            </div>
-          )}
+          {/* Quick Scenario Buttons */}
+          <div className="flex items-center space-x-2">
+            <button
+              onClick={loadTrapScenario}
+              className="px-2.5 py-1 rounded bg-red-950/70 border border-red-800 text-red-300 text-xs hover:bg-red-900 transition-colors"
+            >
+              Trigger Trap (LOQ 50 µg/kg)
+            </button>
+            <button
+              onClick={loadPassScenario}
+              className="px-2.5 py-1 rounded bg-emerald-950/70 border border-emerald-800 text-emerald-300 text-xs hover:bg-emerald-900 transition-colors"
+            >
+              Sensitive Lab (LOQ 5 µg/kg)
+            </button>
+          </div>
         </div>
 
-        {/* BLQ > MRL Trap Evaluator */}
-        <div className="bg-slate-950 border border-slate-800 rounded-xl p-6">
-          <div className="flex items-center justify-between mb-4">
-            <h3 className="text-lg font-semibold text-slate-200 flex items-center gap-2">
-              <span className="w-2 h-2 rounded-full bg-amber-400"></span>
-              "BLQ &gt; MRL Trap" Validator
-            </h3>
-            <div className="flex gap-2">
-              <button
-                type="button"
-                onClick={loadTrapScenario}
-                className="text-xs bg-amber-500/10 hover:bg-amber-500/20 text-amber-300 border border-amber-500/30 px-2 py-1 rounded"
+        <form onSubmit={handleEvaluateTrap} className="grid grid-cols-1 sm:grid-cols-4 gap-3 text-xs">
+          <div>
+            <label className="block text-muted text-[11px] mb-1">Substance</label>
+            <input
+              type="text"
+              value={compound}
+              onChange={(e) => setCompound(e.target.value)}
+              className="w-full bg-paper-well border border-rule rounded px-3 py-1.5 text-xs text-white font-mono"
+            />
+          </div>
+
+          <div>
+            <label className="block text-muted text-[11px] mb-1">Lab Reported Status</label>
+            <select
+              value={labStatus}
+              onChange={(e) => setLabStatus(e.target.value)}
+              className="w-full bg-paper-well border border-rule rounded px-3 py-1.5 text-xs text-white"
+            >
+              <option value="BLQ">BLQ (Below Limit of Quantification)</option>
+              <option value="ND">ND (Not Detected)</option>
+              <option value="DETECTED">Detected Value</option>
+            </select>
+          </div>
+
+          <div>
+            <label className="block text-muted text-[11px] mb-1">Lab Instrument LOQ</label>
+            <div className="flex space-x-1">
+              <input
+                type="number"
+                step="any"
+                value={labLoqVal}
+                onChange={(e) => setLabLoqVal(e.target.value)}
+                className="w-2/3 bg-paper-well border border-rule rounded px-2.5 py-1.5 text-xs text-white font-mono"
+              />
+              <select
+                value={labLoqUnit}
+                onChange={(e) => setLabLoqUnit(e.target.value)}
+                className="w-1/3 bg-paper-well border border-rule rounded px-1 text-[11px] text-white"
               >
-                Load Trap Scenario
-              </button>
-              <button
-                type="button"
-                onClick={loadPassScenario}
-                className="text-xs bg-emerald-500/10 hover:bg-emerald-500/20 text-emerald-300 border border-emerald-500/30 px-2 py-1 rounded"
-              >
-                Load Pass Scenario
-              </button>
+                <option value="ug/kg">µg/kg</option>
+                <option value="ppb">ppb</option>
+                <option value="ppm">ppm</option>
+                <option value="mg/kg">mg/kg</option>
+              </select>
             </div>
           </div>
 
-          <form onSubmit={handleEvaluateTrap} className="space-y-4">
-            <div>
-              <label className="block text-xs font-medium text-slate-400 mb-1">Substance / Chemical Name</label>
-              <input
-                type="text"
-                value={compound}
-                onChange={(e) => setCompound(e.target.value)}
-                className="w-full bg-slate-900 border border-slate-700 rounded-lg px-3 py-2 text-white focus:outline-none focus:border-amber-500"
-                required
-              />
-            </div>
+          <div>
+            <label className="block text-muted text-[11px] mb-1">EU Statutory MRL (mg/kg)</label>
+            <input
+              type="number"
+              step="any"
+              value={mrlVal}
+              onChange={(e) => setMrlVal(e.target.value)}
+              className="w-full bg-paper-well border border-rule rounded px-3 py-1.5 text-xs text-white font-mono"
+            />
+          </div>
 
-            <div className="grid grid-cols-2 gap-3">
-              <div>
-                <label className="block text-xs font-medium text-slate-400 mb-1">Lab Result Status</label>
-                <select
-                  value={labStatus}
-                  onChange={(e) => setLabStatus(e.target.value)}
-                  className="w-full bg-slate-900 border border-slate-700 rounded-lg px-3 py-2 text-white focus:outline-none focus:border-amber-500"
-                >
-                  <option value="BLQ">BLQ (Below Limit of Quantification)</option>
-                  <option value="ND">ND (Non-Detect)</option>
-                </select>
-              </div>
-              <div>
-                <label className="block text-xs font-medium text-slate-400 mb-1">Legal EU MRL (mg/kg)</label>
-                <input
-                  type="number"
-                  step="any"
-                  value={mrlVal}
-                  onChange={(e) => setMrlVal(e.target.value)}
-                  className="w-full bg-slate-900 border border-slate-700 rounded-lg px-3 py-2 text-white focus:outline-none focus:border-amber-500"
-                  required
-                />
-              </div>
-            </div>
-
-            <div className="grid grid-cols-2 gap-3">
-              <div>
-                <label className="block text-xs font-medium text-slate-400 mb-1">Lab LOQ Value</label>
-                <input
-                  type="number"
-                  step="any"
-                  value={labLoqVal}
-                  onChange={(e) => setLabLoqVal(e.target.value)}
-                  className="w-full bg-slate-900 border border-slate-700 rounded-lg px-3 py-2 text-white focus:outline-none focus:border-amber-500"
-                  required
-                />
-              </div>
-              <div>
-                <label className="block text-xs font-medium text-slate-400 mb-1">Lab LOQ Unit</label>
-                <select
-                  value={labLoqUnit}
-                  onChange={(e) => setLabLoqUnit(e.target.value)}
-                  className="w-full bg-slate-900 border border-slate-700 rounded-lg px-3 py-2 text-white focus:outline-none focus:border-amber-500"
-                >
-                  <option value="ug/kg">ug/kg</option>
-                  <option value="ppb">ppb</option>
-                  <option value="ppm">ppm</option>
-                  <option value="mg/kg">mg/kg</option>
-                </select>
-              </div>
-            </div>
-
+          <div className="sm:col-span-4 pt-1">
             <button
               type="submit"
               disabled={loading}
-              className="w-full bg-amber-600 hover:bg-amber-500 disabled:opacity-50 text-white font-medium py-2 rounded-lg transition-colors text-sm"
+              className="w-full keycap-btn keycap-btn-primary py-2 text-xs font-semibold flex items-center justify-center space-x-1.5"
             >
-              {loading ? 'Evaluating...' : 'Evaluate BLQ Compliance Verdict'}
+              <Zap className="w-3.5 h-3.5" />
+              <span>{loading ? 'Evaluating Sensitivity...' : 'Simulate Regulatory Verdict'}</span>
             </button>
-          </form>
+          </div>
+        </form>
 
-          {evalResult && (
+        {evalResult && (
+          <div className="space-y-4 pt-2">
             <div
-              className={`mt-4 p-4 rounded-lg border ${
-                evalResult.verdict === 'CRITICAL_BLOCK'
-                  ? 'bg-rose-950/40 border-rose-500/40 text-rose-200'
-                  : 'bg-emerald-950/40 border-emerald-500/40 text-emerald-200'
+              className={`p-4 rounded-lg border ${
+                evalResult.verdict === 'PASS'
+                  ? 'bg-emerald-950/40 border-emerald-800/80 text-emerald-200'
+                  : 'bg-red-950/40 border-red-800/80 text-red-200'
               }`}
             >
-              <div className="flex items-center gap-2 font-bold mb-1">
-                {evalResult.verdict === 'CRITICAL_BLOCK' ? (
-                  <>
-                    <XCircle className="w-5 h-5 text-rose-400 shrink-0" />
-                    <span className="text-rose-400">CRITICAL_BLOCK - Lab Machine Insensitive</span>
-                  </>
-                ) : (
-                  <>
-                    <CheckCircle2 className="w-5 h-5 text-emerald-400 shrink-0" />
-                    <span className="text-emerald-400">PASS - Non-Detect Legally Verified</span>
-                  </>
-                )}
+              <div className="flex items-center justify-between mb-2">
+                <div className="flex items-center space-x-2">
+                  {evalResult.verdict === 'PASS' ? (
+                    <CheckCircle2 className="w-5 h-5 text-emerald-400" />
+                  ) : (
+                    <ShieldAlert className="w-5 h-5 text-red-400" />
+                  )}
+                  <span className="font-display font-bold text-sm">
+                    Verdict: {evalResult.verdict}
+                  </span>
+                </div>
+
+                <span className="font-mono text-xs px-2 py-0.5 rounded bg-black/40 border border-white/10">
+                  BLQ Trap Triggered: <strong>{evalResult.blq_trap_triggered ? 'YES (CRITICAL)' : 'NO'}</strong>
+                </span>
               </div>
-              <p className="text-xs leading-relaxed text-slate-300 mt-1">{evalResult.reason}</p>
-              <div className="mt-3 grid grid-cols-2 text-xs border-t border-slate-800 pt-2 text-slate-400">
-                <div>Lab LOQ: <span className="font-mono text-white">{evalResult.lab_loq_canonical_mg_kg} mg/kg</span></div>
-                <div>Legal MRL: <span className="font-mono text-white">{evalResult.max_limit_mg_kg} mg/kg</span></div>
-              </div>
+
+              <p className="text-xs leading-relaxed">{evalResult.reason}</p>
             </div>
-          )}
-        </div>
+
+            {/* Visual Sensitivity Comparison Scale */}
+            <div className="bg-paper-well p-4 rounded-lg border border-rule space-y-3">
+              <h4 className="text-xs font-display font-semibold text-white">Visual Instrument Sensitivity Scale:</h4>
+
+              <div className="space-y-2 text-xs font-mono">
+                <div>
+                  <div className="flex justify-between text-[11px] mb-1">
+                    <span className="text-muted">Statutory EU MRL Ceiling:</span>
+                    <span className="text-emerald-400 font-bold">{evalResult.max_limit_mg_kg} mg/kg</span>
+                  </div>
+                  <div className="w-full h-3 bg-paper-3 rounded overflow-hidden">
+                    <div className="h-full bg-emerald-500 rounded" style={{ width: '40%' }} />
+                  </div>
+                </div>
+
+                <div>
+                  <div className="flex justify-between text-[11px] mb-1">
+                    <span className="text-muted">Lab Instrument LOQ (Converted):</span>
+                    <span className={`font-bold ${evalResult.blq_trap_triggered ? 'text-red-400' : 'text-emerald-400'}`}>
+                      {evalResult.lab_loq_canonical_mg_kg} mg/kg
+                    </span>
+                  </div>
+                  <div className="w-full h-3 bg-paper-3 rounded overflow-hidden">
+                    <div
+                      className={`h-full rounded ${evalResult.blq_trap_triggered ? 'bg-red-500' : 'bg-emerald-500'}`}
+                      style={{
+                        width: evalResult.blq_trap_triggered ? '85%' : '25%',
+                      }}
+                    />
+                  </div>
+                </div>
+              </div>
+
+              <p className="text-[11px] text-muted/90 pt-1">
+                {evalResult.blq_trap_triggered
+                  ? '⚠️ The testing machine had a limit of quantification (LOQ) higher than the EU maximum residue limit. Even though no substance was detected, EU customs rejects this report because the instrument was too coarse to prove compliance.'
+                  : '✅ The testing machine had an LOQ strictly below the statutory MRL threshold. The BLQ reading reliably proves statutory compliance.'}
+              </p>
+            </div>
+          </div>
+        )}
       </div>
     </div>
   );

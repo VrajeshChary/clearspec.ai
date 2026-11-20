@@ -1,18 +1,41 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { Mic, MicOff, Volume2, Sparkles, Send, Loader2, ChevronDown, ChevronUp, Radio } from 'lucide-react';
+import {
+  Mic,
+  MicOff,
+  Volume2,
+  Sparkles,
+  Send,
+  Loader2,
+  ChevronDown,
+  ChevronUp,
+  Radio,
+  X,
+  VolumeX,
+  Languages,
+  HelpCircle
+} from 'lucide-react';
+import { askLiveText } from '../services/api';
 
-export default function LiveVoiceWidget({ auditResult }) {
-  const [isOpen, setIsOpen] = useState(true);
+const QUICK_PROMPTS = [
+  { label: 'Why is shipment blocked?', text: 'Why is consignment batch GNT-24A under a critical block?' },
+  { label: 'Explain BLQ trap', text: 'Explain why Tricyclazole triggered the BLQ sensitivity trap.' },
+  { label: 'తెలుగులో వివరించండి', text: 'ఈ కన్సైన్‌మెంట్ ఎందుకు ఆపివేయబడిందో తెలుగులో వివరించండి.', isTe: true },
+  { label: 'Risk breakdown', text: 'Break down the ₹52.46 Lakh financial risk exposure in detail.' }
+];
+
+export default function LiveVoiceWidget({ auditResult, isOpen, onClose }) {
   const [isRecording, setIsRecording] = useState(false);
   const [isConnecting, setIsConnecting] = useState(false);
   const [transcripts, setTranscripts] = useState([
     {
       speaker: 'model',
-      text: 'ClearSpec Live is ready. Ask me in English or Telugu why Batch GNT-24A was blocked.',
+      text: 'ClearSpec Live connected. I can explain the regulatory violations and ₹52.46L risk for Batch GNT-24A in English or Telugu.',
+      time: 'Just now'
     },
   ]);
   const [textInput, setTextInput] = useState('');
   const [isThinking, setIsThinking] = useState(false);
+  const [isMuted, setIsMuted] = useState(false);
 
   const wsRef = useRef(null);
   const audioContextRef = useRef(null);
@@ -26,7 +49,7 @@ export default function LiveVoiceWidget({ auditResult }) {
     transcriptEndRef.current?.scrollIntoView({ behavior: 'smooth' });
   }, [transcripts]);
 
-  // Clean up on unmount
+  // Cleanup on unmount
   useEffect(() => {
     return () => {
       stopRecording();
@@ -42,7 +65,6 @@ export default function LiveVoiceWidget({ auditResult }) {
       wsRef.current = ws;
 
       ws.onopen = () => {
-        // Send initial consignment context
         ws.send(
           JSON.stringify({
             type: 'init',
@@ -61,15 +83,14 @@ export default function LiveVoiceWidget({ auditResult }) {
           if (msg.type === 'transcript') {
             setTranscripts((prev) => [
               ...prev,
-              { speaker: msg.speaker, text: msg.text },
+              { speaker: msg.speaker, text: msg.text, time: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) },
             ]);
-            // If model spoke in Telugu or English, also use TTS fallback if no PCM audio
-            if (msg.speaker === 'model' && 'speechSynthesis' in window && !msg.hasAudio) {
+            if (msg.speaker === 'model' && !isMuted && 'speechSynthesis' in window && !msg.hasAudio) {
               const u = new SpeechSynthesisUtterance(msg.text);
               u.rate = 1.05;
               window.speechSynthesis.speak(u);
             }
-          } else if (msg.type === 'audio') {
+          } else if (msg.type === 'audio' && !isMuted) {
             playAudioChunk(msg.data);
           } else if (msg.type === 'interrupted') {
             nextPlayTimeRef.current = 0;
@@ -78,43 +99,39 @@ export default function LiveVoiceWidget({ auditResult }) {
             }
           }
         } catch (e) {
-          console.error('WS parse error:', e);
+          console.error('WS Parse error:', e);
         }
       };
 
-      ws.onerror = (e) => {
-        console.warn('Live WebSocket fallback mode active.');
-        resolve(ws);
+      ws.onerror = (err) => {
+        console.warn('WS error, fallback mode ready:', err);
+        reject(err);
       };
 
       ws.onclose = () => {
         setIsRecording(false);
+        setIsConnecting(false);
       };
     });
   };
 
-  const playAudioChunk = (base64Data) => {
+  const playAudioChunk = (base64Pcm) => {
     try {
       if (!playbackContextRef.current) {
-        playbackContextRef.current = new (window.AudioContext || window.webkitAudioContext)({
-          sampleRate: 24000,
-        });
+        playbackContextRef.current = new (window.AudioContext || window.webkitAudioContext)({ sampleRate: 24000 });
       }
       const ctx = playbackContextRef.current;
-      const binary = atob(base64Data);
-      const len = binary.length;
-      const bytes = new Uint8Array(len);
-      for (let i = 0; i < len; i++) {
-        bytes[i] = binary.charCodeAt(i);
+      const rawBytes = atob(base64Pcm);
+      const int16Array = new Int16Array(rawBytes.length / 2);
+      for (let i = 0; i < int16Array.length; i++) {
+        int16Array[i] = rawBytes.charCodeAt(i * 2) | (rawBytes.charCodeAt(i * 2 + 1) << 8);
       }
-      const pcm16 = new Int16Array(bytes.buffer);
-      const float32 = new Float32Array(pcm16.length);
-      for (let i = 0; i < pcm16.length; i++) {
-        float32[i] = pcm16[i] / 32768.0;
+      const floatArray = new Float32Array(int16Array.length);
+      for (let i = 0; i < int16Array.length; i++) {
+        floatArray[i] = int16Array[i] / 32768.0;
       }
-
-      const audioBuffer = ctx.createBuffer(1, float32.length, 24000);
-      audioBuffer.copyToChannel(float32, 0);
+      const audioBuffer = ctx.createBuffer(1, floatArray.length, 24000);
+      audioBuffer.getChannelData(0).set(floatArray);
 
       const source = ctx.createBufferSource();
       source.buffer = audioBuffer;
@@ -124,8 +141,8 @@ export default function LiveVoiceWidget({ auditResult }) {
       const startTime = Math.max(now, nextPlayTimeRef.current);
       source.start(startTime);
       nextPlayTimeRef.current = startTime + audioBuffer.duration;
-    } catch (err) {
-      console.error('Audio playback error:', err);
+    } catch (e) {
+      console.warn('Audio playback error:', e);
     }
   };
 
@@ -133,35 +150,25 @@ export default function LiveVoiceWidget({ auditResult }) {
     try {
       setIsConnecting(true);
       await connectWebSocket();
+      setIsConnecting(false);
 
-      const stream = await navigator.mediaDevices.getUserMedia({
-        audio: {
-          channelCount: 1,
-          sampleRate: 16000,
-          echoCancellation: true,
-          noiseSuppression: true,
-        },
-      });
+      const stream = await navigator.mediaDevices.getUserMedia({ audio: { sampleRate: 16000, channelCount: 1 } });
       mediaStreamRef.current = stream;
 
       const audioCtx = new (window.AudioContext || window.webkitAudioContext)({ sampleRate: 16000 });
       audioContextRef.current = audioCtx;
 
-      const source = audioCtx.createMediaStreamSource(stream);
-      // Buffer size 4096 = ~250ms chunks at 16kHz
-      const processor = audioCtx.createScriptProcessor(4096, 1, 1);
-      scriptProcessorRef.current = processor;
+      const sourceNode = audioCtx.createMediaStreamSource(stream);
+      const scriptNode = audioCtx.createScriptProcessor(4096, 1, 1);
+      scriptProcessorRef.current = scriptNode;
 
-      processor.onaudioprocess = (e) => {
+      scriptNode.onaudioprocess = (e) => {
         if (!wsRef.current || wsRef.current.readyState !== WebSocket.OPEN) return;
         const inputData = e.inputBuffer.getChannelData(0);
-        // Float32 to Int16 PCM
         const pcm16 = new Int16Array(inputData.length);
         for (let i = 0; i < inputData.length; i++) {
-          const s = Math.max(-1, Math.min(1, inputData[i]));
-          pcm16[i] = s < 0 ? s * 0x8000 : s * 0x7fff;
+          pcm16[i] = Math.max(-1, Math.min(1, inputData[i])) * 0x7fff;
         }
-        // Base64 encode
         let binary = '';
         const bytes = new Uint8Array(pcm16.buffer);
         for (let i = 0; i < bytes.length; i++) {
@@ -171,80 +178,67 @@ export default function LiveVoiceWidget({ auditResult }) {
         wsRef.current.send(JSON.stringify({ type: 'audio', data: b64 }));
       };
 
-      source.connect(processor);
-      processor.connect(audioCtx.destination);
-
+      sourceNode.connect(scriptNode);
+      scriptNode.connect(audioCtx.destination);
       setIsRecording(true);
-      setIsConnecting(false);
     } catch (err) {
-      console.warn('Microphone access denied or unsupported:', err);
+      console.warn('Microphone error or permission denied:', err);
       setIsConnecting(false);
       setIsRecording(false);
       setTranscripts((prev) => [
         ...prev,
         {
-          speaker: 'model',
-          text: 'Microphone not accessible. You can ask by clicking any quick question chip or typing below.',
+          speaker: 'system',
+          text: 'Microphone unavailable in this environment. You can use text prompts or quick buttons below for instant answers.',
+          time: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
         },
       ]);
     }
   };
 
   const stopRecording = () => {
-    if (scriptProcessorRef.current) {
-      scriptProcessorRef.current.disconnect();
-      scriptProcessorRef.current = null;
-    }
-    if (audioContextRef.current) {
-      audioContextRef.current.close().catch(() => {});
-      audioContextRef.current = null;
-    }
-    if (mediaStreamRef.current) {
-      mediaStreamRef.current.getTracks().forEach((track) => track.stop());
-      mediaStreamRef.current = null;
-    }
-    if (wsRef.current) {
-      wsRef.current.close();
-      wsRef.current = null;
-    }
     setIsRecording(false);
     setIsConnecting(false);
-  };
-
-  const toggleRecording = () => {
-    if (isRecording) {
-      stopRecording();
-    } else {
-      startRecording();
+    if (scriptProcessorRef.current) {
+      try { scriptProcessorRef.current.disconnect(); } catch (_) {}
+      scriptProcessorRef.current = null;
+    }
+    if (mediaStreamRef.current) {
+      mediaStreamRef.current.getTracks().forEach((t) => t.stop());
+      mediaStreamRef.current = null;
+    }
+    if (audioContextRef.current) {
+      try { audioContextRef.current.close(); } catch (_) {}
+      audioContextRef.current = null;
+    }
+    if (wsRef.current) {
+      try { wsRef.current.close(); } catch (_) {}
+      wsRef.current = null;
     }
   };
 
-  const askQuestion = async (queryText) => {
-    if (!queryText.trim()) return;
-    const userMsg = queryText.trim();
+  const handleSendText = async (textToSend) => {
+    const q = (textToSend || textInput).trim();
+    if (!q || isThinking) return;
+
     setTextInput('');
-    setTranscripts((prev) => [...prev, { speaker: 'user', text: userMsg }]);
+    const timeStr = new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+    setTranscripts((prev) => [...prev, { speaker: 'user', text: q, time: timeStr }]);
     setIsThinking(true);
 
     try {
-      const res = await fetch('/api/v1/live/ask-text', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          question: userMsg,
-          audit_context: auditResult,
-          language: userMsg.includes('తెలుగు') ? 'te' : 'en',
-        }),
-      });
-      const data = await res.json();
+      const isTe = /[\u0C00-\u0C7F]/.test(q) || q.toLowerCase().includes('telugu');
+      const data = await askLiveText(q, auditResult, isTe ? 'te' : 'en');
       setTranscripts((prev) => [
         ...prev,
-        { speaker: 'model', text: data.answer },
+        {
+          speaker: 'model',
+          text: data.answer,
+          time: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+          model: data.model_used
+        },
       ]);
-
-      // Speak response aloud via SpeechSynthesis
-      if ('speechSynthesis' in window) {
-        window.speechSynthesis.cancel();
+      if (!isMuted && 'speechSynthesis' in window) {
         const u = new SpeechSynthesisUtterance(data.answer);
         u.rate = 1.05;
         window.speechSynthesis.speak(u);
@@ -252,153 +246,143 @@ export default function LiveVoiceWidget({ auditResult }) {
     } catch (err) {
       setTranscripts((prev) => [
         ...prev,
-        {
-          speaker: 'model',
-          text: 'Consignment GNT-24A blocked: 450 kg weight shortage, Tricyclazole LOQ trap (0.05 > 0.01 mg/kg), and Aflatoxin B1 exceedance (₹52.46L risk prevented).',
-        },
+        { speaker: 'system', text: `Error: ${err.message}`, time: timeStr },
       ]);
     } finally {
       setIsThinking(false);
     }
   };
 
+  if (!isOpen) return null;
+
   return (
-    <div className="rounded-xl border border-indigo-500/40 bg-slate-900/90 shadow-xl overflow-hidden backdrop-blur-md">
-      {/* Header bar */}
-      <div
-        className="flex items-center justify-between px-4 py-3 bg-gradient-to-r from-indigo-950/80 via-slate-900 to-slate-900 border-b border-indigo-500/30 cursor-pointer"
-        onClick={() => setIsOpen(!isOpen)}
-      >
-        <div className="flex items-center gap-2.5">
-          <div className="p-1.5 rounded-lg bg-indigo-500/20 text-indigo-400 border border-indigo-500/30">
-            <Sparkles className="w-4 h-4 text-indigo-400 animate-pulse" />
+    <div className="fixed bottom-4 right-4 z-50 w-96 max-w-[calc(100vw-2rem)] reg-card shadow-2xl border-rule-strong flex flex-col overflow-hidden animate-in fade-in slide-in-from-bottom-4 duration-200">
+      {/* Header */}
+      <div className="px-4 py-3 hairline-b bg-paper-2 flex items-center justify-between">
+        <div className="flex items-center space-x-2">
+          <div className="w-7 h-7 rounded-md bg-emerald-600/20 border border-emerald-500/40 flex items-center justify-center text-emerald-400">
+            <Radio className="w-3.5 h-3.5 animate-pulse text-emerald-400" />
           </div>
           <div>
-            <div className="text-sm font-bold text-white flex items-center gap-2">
-              Gemini 3.8 Live Voice Assistant
-              <span className="text-[10px] font-mono bg-indigo-900/60 text-indigo-300 border border-indigo-700 px-1.5 py-0.5 rounded">
-                gemini-3.8-live
+            <h4 className="text-xs font-display font-semibold text-white tracking-tight flex items-center space-x-1.5">
+              <span>ClearSpec Live Voice</span>
+              <span className="text-[9px] font-mono px-1 py-0.2 bg-emerald-950 text-emerald-300 border border-emerald-800 rounded">
+                Gemini 3.8
               </span>
-            </div>
-            <div className="text-xs text-slate-400">
-              Interactive Bilingual Q&amp;A • English &bull; తెలుగు (Telugu)
-            </div>
+            </h4>
+            <span className="text-[10px] text-muted">Bilingual English + Telugu Auditor</span>
           </div>
         </div>
 
-        <div className="flex items-center gap-2">
-          {isRecording && (
-            <div className="flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-rose-500/20 border border-rose-500/40 text-rose-400 text-xs font-semibold animate-pulse">
-              <Radio className="w-3.5 h-3.5" /> Live Audio
-            </div>
-          )}
-          <button className="text-slate-400 hover:text-white p-1">
-            {isOpen ? <ChevronUp className="w-4 h-4" /> : <ChevronDown className="w-4 h-4" />}
+        <div className="flex items-center space-x-1">
+          <button
+            onClick={() => setIsMuted(!isMuted)}
+            title={isMuted ? 'Unmute Audio' : 'Mute Audio'}
+            className="p-1 rounded text-muted hover:text-ink hover:bg-paper-3 transition-colors"
+          >
+            {isMuted ? <VolumeX className="w-3.5 h-3.5 text-amber-400" /> : <Volume2 className="w-3.5 h-3.5" />}
+          </button>
+          <button
+            onClick={onClose}
+            className="p-1 rounded text-muted hover:text-ink hover:bg-paper-3 transition-colors"
+          >
+            <X className="w-4 h-4" />
           </button>
         </div>
       </div>
 
-      {isOpen && (
-        <div className="p-4 space-y-4">
-          {/* Quick-ask prompt chips */}
-          <div className="flex flex-wrap gap-2">
-            <button
-              onClick={() => askQuestion('Why did Batch GNT-24A fail EU clearance?')}
-              className="text-xs bg-slate-800 hover:bg-indigo-900/40 text-slate-300 hover:text-indigo-200 border border-slate-700 hover:border-indigo-500/50 rounded-full px-3 py-1.5 transition-all text-left"
-            >
-              🎤 "Why did Batch GNT-24A fail EU clearance?"
-            </button>
-            <button
-              onClick={() => askQuestion('తెలుగులో వివరించండి (Explain in Telugu)')}
-              className="text-xs bg-indigo-950/40 hover:bg-indigo-900/60 text-indigo-300 border border-indigo-500/40 rounded-full px-3 py-1.5 transition-all text-left font-medium"
-            >
-              🎤 "తెలుగులో వివరించండి (Explain in Telugu)"
-            </button>
-            <button
-              onClick={() => askQuestion('What is the total financial risk exposure?')}
-              className="text-xs bg-slate-800 hover:bg-indigo-900/40 text-slate-300 hover:text-indigo-200 border border-slate-700 hover:border-indigo-500/50 rounded-full px-3 py-1.5 transition-all text-left"
-            >
-              💰 "What is the total financial risk exposure?"
-            </button>
-          </div>
-
-          {/* Transcript Dialogue Box */}
-          <div className="bg-slate-950/80 rounded-lg p-3 max-h-48 overflow-y-auto space-y-2.5 border border-slate-800 text-xs leading-relaxed">
-            {transcripts.map((t, idx) => (
+      {/* Transcript Log */}
+      <div className="h-64 overflow-y-auto p-3 space-y-2.5 bg-paper-well text-xs font-body">
+        {transcripts.map((t, i) => {
+          const isUser = t.speaker === 'user';
+          const isSys = t.speaker === 'system';
+          return (
+            <div key={i} className={`flex flex-col ${isUser ? 'items-end' : 'items-start'}`}>
               <div
-                key={idx}
-                className={`flex gap-2 ${
-                  t.speaker === 'user' ? 'justify-end' : 'justify-start'
+                className={`max-w-[85%] rounded-lg p-2.5 text-xs leading-relaxed ${
+                  isUser
+                    ? 'bg-emerald-600 text-white rounded-br-none shadow-sm'
+                    : isSys
+                    ? 'bg-amber-950/60 text-amber-200 border border-amber-800/60'
+                    : 'bg-paper-3 text-ink-2 border border-rule rounded-bl-none shadow-sm'
                 }`}
               >
-                <div
-                  className={`max-w-[85%] rounded-lg px-3 py-2 ${
-                    t.speaker === 'user'
-                      ? 'bg-indigo-600/90 text-white'
-                      : 'bg-slate-800/90 text-slate-200 border border-slate-700'
-                  }`}
-                >
-                  <div className="font-semibold text-[10px] text-slate-400 mb-0.5 uppercase tracking-wider">
-                    {t.speaker === 'user' ? 'You' : 'ClearSpec Live'}
-                  </div>
-                  <div className="whitespace-pre-wrap">{t.text}</div>
+                <div className="flex items-center justify-between gap-2 mb-1 text-[10px] opacity-70">
+                  <span className="font-semibold">{isUser ? 'You' : isSys ? 'System' : 'Auditor (Live)'}</span>
+                  <span className="font-mono text-[9px]">{t.time}</span>
                 </div>
+                <p className="whitespace-pre-wrap">{t.text}</p>
               </div>
-            ))}
-            {isThinking && (
-              <div className="flex items-center gap-2 text-indigo-400 text-xs py-1">
-                <Loader2 className="w-3.5 h-3.5 animate-spin" /> ClearSpec is synthesizing findings…
-              </div>
-            )}
-            <div ref={transcriptEndRef} />
+            </div>
+          );
+        })}
+        {isThinking && (
+          <div className="flex items-center space-x-2 text-muted text-xs p-2">
+            <Loader2 className="w-3.5 h-3.5 animate-spin text-emerald-400" />
+            <span className="font-mono text-[11px]">Gemini reasoning over consignment ledger...</span>
           </div>
+        )}
+        <div ref={transcriptEndRef} />
+      </div>
 
-          {/* Controls: Microphone + Text Input */}
-          <div className="flex items-center gap-2">
-            <button
-              onClick={toggleRecording}
-              disabled={isConnecting}
-              className={`p-3 rounded-lg font-semibold text-sm transition-all flex items-center justify-center gap-2 shadow-lg ${
-                isRecording
-                  ? 'bg-rose-600 hover:bg-rose-500 text-white animate-pulse shadow-rose-600/30'
-                  : 'bg-indigo-600 hover:bg-indigo-500 text-white shadow-indigo-600/30'
-              }`}
-              title={isRecording ? 'Stop Live Audio' : 'Start Live Voice'}
-            >
-              {isConnecting ? (
-                <Loader2 className="w-5 h-5 animate-spin" />
-              ) : isRecording ? (
-                <MicOff className="w-5 h-5" />
-              ) : (
-                <Mic className="w-5 h-5" />
-              )}
-            </button>
+      {/* Quick Prompts Bar */}
+      <div className="px-3 py-2 hairline-t bg-paper-2 flex flex-wrap gap-1.5">
+        {QUICK_PROMPTS.map((p, idx) => (
+          <button
+            key={idx}
+            onClick={() => handleSendText(p.text)}
+            className="text-[10px] px-2 py-0.5 rounded bg-paper-3 hover:bg-emerald-600/20 text-ink-2 hover:text-emerald-300 border border-rule hover:border-emerald-500/40 transition-colors"
+          >
+            {p.label}
+          </button>
+        ))}
+      </div>
 
-            <form
-              onSubmit={(e) => {
-                e.preventDefault();
-                askQuestion(textInput);
-              }}
-              className="flex-1 flex items-center gap-2"
-            >
-              <input
-                type="text"
-                value={textInput}
-                onChange={(e) => setTextInput(e.target.value)}
-                placeholder="Ask in English or తెలుగు (e.g. Why did it fail?)..."
-                className="flex-1 bg-slate-950 border border-slate-700 focus:border-indigo-500 rounded-lg px-3 py-2 text-xs text-white placeholder-slate-500 focus:outline-none"
-              />
-              <button
-                type="submit"
-                disabled={!textInput.trim() || isThinking}
-                className="bg-slate-800 hover:bg-indigo-600 disabled:opacity-50 text-white p-2.5 rounded-lg transition-colors"
-              >
-                <Send className="w-4 h-4" />
-              </button>
-            </form>
-          </div>
-        </div>
-      )}
+      {/* Mic & Input Controls */}
+      <div className="p-3 hairline-t bg-paper-3 flex items-center space-x-2">
+        <button
+          onClick={isRecording ? stopRecording : startRecording}
+          disabled={isConnecting}
+          title={isRecording ? 'Stop Recording' : 'Push to Talk (Gemini 3.8 Live)'}
+          className={`shrink-0 w-9 h-9 rounded-full flex items-center justify-center transition-colors ${
+            isRecording
+              ? 'bg-red-600 text-white animate-pulse shadow-lg shadow-red-900/50'
+              : 'bg-emerald-600 hover:bg-emerald-500 text-white shadow-md'
+          }`}
+        >
+          {isConnecting ? (
+            <Loader2 className="w-4 h-4 animate-spin" />
+          ) : isRecording ? (
+            <MicOff className="w-4 h-4" />
+          ) : (
+            <Mic className="w-4 h-4" />
+          )}
+        </button>
+
+        <form
+          onSubmit={(e) => {
+            e.preventDefault();
+            handleSendText();
+          }}
+          className="flex-1 flex items-center space-x-1"
+        >
+          <input
+            type="text"
+            value={textInput}
+            onChange={(e) => setTextInput(e.target.value)}
+            placeholder={isRecording ? 'Streaming audio live...' : 'Ask in English or తెలుగు...'}
+            disabled={isRecording}
+            className="flex-1 bg-paper-well text-ink border border-rule rounded px-2.5 py-1.5 text-xs focus:outline-none focus:border-emerald-500 placeholder:text-muted"
+          />
+          <button
+            type="submit"
+            disabled={!textInput.trim() || isThinking || isRecording}
+            className="p-1.5 rounded bg-emerald-600 text-white disabled:opacity-40 disabled:hover:bg-emerald-600 hover:bg-emerald-500 transition-colors"
+          >
+            <Send className="w-3.5 h-3.5" />
+          </button>
+        </form>
+      </div>
     </div>
   );
 }
