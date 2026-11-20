@@ -1,6 +1,8 @@
 import re
+import sqlite3
 from typing import Optional, Dict, Any, Tuple
 from ..schemas.eu_mrl_lookup import HsNormalizeResponse, ChemicalLookupResponse
+from .statutory_db import DB_PATH, init_statutory_database
 
 CAS_REGEX = re.compile(r"^\d{2,7}-\d{2}-\d$")
 
@@ -12,81 +14,9 @@ HS4_COMMODITY_MAPPING: Dict[str, str] = {
     "0909": "Seeds of anise, badian, fennel, coriander, cumin or caraway; juniper berries",
     "0910": "Ginger, saffron, turmeric (curcuma), thyme, bay leaves, curry and other spices",
     "1202": "Ground-nuts, not roasted or otherwise cooked",
+    "0306": "Crustaceans, whether in shell or not (e.g. Frozen Shrimp)",
+    "7318": "Screws, bolts, nuts, coach screws, screw hooks, rivets, cotters, cotter-pins, washers (including spring washers) and similar articles, of iron or steel",
 }
-
-# Seed chemical database: CAS as primary key + synonyms + MRL by HS4
-CHEMICAL_DATABASE = [
-    {
-        "cas_number": "75-21-8",
-        "canonical_name": "Ethylene oxide (sum of ethylene oxide and 2-chloro-ethanol expressed as ethylene oxide)",
-        "aliases": ["ethylene oxide", "eto", "oxirane", "2-chloroethanol"],
-        "mrls": {
-            "0904": 0.02, # default LOQ MRL in mg/kg for spices
-            "0902": 0.02,
-            "0909": 0.02,
-            "0910": 0.02,
-            "1006": 0.01,
-            "default": 0.01,
-        },
-        "regulation_reference": "Regulation (EU) 2020/1540 & Regulation (EU) 2022/1396",
-    },
-    {
-        "cas_number": "2921-88-2",
-        "canonical_name": "Chlorpyrifos",
-        "aliases": ["chlorpyrifos", "chlorpyriphos", "dursban", "chlorpyrifos-ethyl"],
-        "mrls": {
-            "0904": 0.01, # Ban / reduced to LOQ
-            "0806": 0.01,
-            "1006": 0.01,
-            "default": 0.01,
-        },
-        "regulation_reference": "Regulation (EU) 2020/1085",
-    },
-    {
-        "cas_number": "41814-78-2",
-        "canonical_name": "Tricyclazole",
-        "aliases": ["tricyclazole", "beam", "tricyclazol"],
-        "mrls": {
-            "1006": 0.01, # Strict 0.01 mg/kg for basmati rice
-            "default": 0.01,
-        },
-        "regulation_reference": "Regulation (EU) 2017/626",
-    },
-    {
-        "cas_number": "135410-20-7",
-        "canonical_name": "Acetamiprid",
-        "aliases": ["acetamiprid", "mospilan", "assail"],
-        "mrls": {
-            "0904": 0.50, # mg/kg
-            "0806": 0.01,
-            "0902": 0.05,
-            "default": 0.01,
-        },
-        "regulation_reference": "Regulation (EU) 2023/1029",
-    },
-    {
-        "cas_number": "138261-41-3",
-        "canonical_name": "Imidacloprid",
-        "aliases": ["imidacloprid", "confidor", "gaucho"],
-        "mrls": {
-            "0904": 0.01,
-            "0806": 0.01,
-            "1006": 0.01,
-            "default": 0.01,
-        },
-        "regulation_reference": "Regulation (EU) 2024/331",
-    },
-    {
-        "cas_number": "41198-08-7",
-        "canonical_name": "Profenofos",
-        "aliases": ["profenofos", "curacron", "profenophos"],
-        "mrls": {
-            "0904": 0.05, # mg/kg for chili
-            "default": 0.01,
-        },
-        "regulation_reference": "Regulation (EU) 2021/618",
-    },
-]
 
 def normalize_hs_code(raw_code: str) -> HsNormalizeResponse:
     """
@@ -95,11 +25,11 @@ def normalize_hs_code(raw_code: str) -> HsNormalizeResponse:
     clean_digits = "".join(ch for ch in str(raw_code) if ch.isdigit())
     if len(clean_digits) < 4:
         raise ValueError(f"HS Code must contain at least 4 digits, received: '{raw_code}'")
-        
+
     hs4 = clean_digits[:4]
     hs6 = clean_digits[:6] if len(clean_digits) >= 6 else None
     desc = HS4_COMMODITY_MAPPING.get(hs4, "Agricultural commodity (General Schedule)")
-    
+
     return HsNormalizeResponse(
         raw_code=raw_code,
         clean_code=clean_digits,
@@ -109,13 +39,14 @@ def normalize_hs_code(raw_code: str) -> HsNormalizeResponse:
     )
 
 def validate_cas_checksum(cas_str: str) -> bool:
+    """Validates CAS Registry Number checksum."""
     cas_str = cas_str.strip()
     if not CAS_REGEX.match(cas_str):
         return False
     digits = [int(c) for c in cas_str.replace("-", "")]
     check_digit = digits[-1]
     body_digits = digits[:-1]
-    
+
     total = sum((i + 1) * digit for i, digit in enumerate(reversed(body_digits)))
     return (total % 10) == check_digit
 
@@ -123,40 +54,116 @@ def lookup_chemical_mrl(
     raw_hs_code: str,
     cas_number: Optional[str] = None,
     chemical_alias: Optional[str] = None,
+    market: str = "EU",
 ) -> ChemicalLookupResponse:
     """
-    Performs database lookup:
-    1. Normalizes HS code to 4-digit prefix
-    2. Matches chemical by CAS Registry Number first
-    3. Falls back to chemical alias name
+    Performs real SQLite database lookup from backend/data/statutory_rules.db:
+    1. Normalizes HS code to 4-digit prefix.
+    2. Matches chemical by CAS Registry Number first.
+    3. Falls back to chemical alias name via chemical_aliases table.
+    4. Finds commodity-specific MRL by HS4 prefix, or default regulation limit.
     """
+    init_statutory_database()
     hs_norm = normalize_hs_code(raw_hs_code)
     hs4 = hs_norm.hs4_prefix
     commodity_name = hs_norm.description
-    
-    matched_entry = None
+
+    clean_cas = cas_number.strip() if cas_number else None
+    matched_cas = None
     match_tier = None
-    
-    # 1. Match by CAS Number (Tier 1 Priority)
-    if cas_number:
-        clean_cas = cas_number.strip()
-        for item in CHEMICAL_DATABASE:
-            if item["cas_number"] == clean_cas:
-                matched_entry = item
+    canonical_name = None
+    max_limit = None
+    reg_ref = None
+
+    conn = sqlite3.connect(DB_PATH)
+    conn.row_factory = sqlite3.Row
+    cursor = conn.cursor()
+
+    try:
+        # Tier 1: Match by CAS number directly
+        if clean_cas:
+            cursor.execute(
+                "SELECT canonical_name, max_limit_mg_kg, regulation_reference FROM mrl_rules WHERE cas_number = ? AND hs4_prefix = ? AND market = ? LIMIT 1",
+                (clean_cas, hs4, market)
+            )
+            row = cursor.fetchone()
+            if not row:
+                cursor.execute(
+                    "SELECT canonical_name, max_limit_mg_kg, regulation_reference FROM mrl_rules WHERE cas_number = ? AND market = ? LIMIT 1",
+                    (clean_cas, market)
+                )
+                row = cursor.fetchone()
+
+            if row:
+                matched_cas = clean_cas
                 match_tier = "CAS_NUMBER"
-                break
-                
-    # 2. Match by Alias / Name (Tier 2 Priority)
-    if not matched_entry and chemical_alias:
-        clean_alias = chemical_alias.strip().lower()
-        for item in CHEMICAL_DATABASE:
-            aliases_lower = [a.lower() for a in item["aliases"]]
-            if clean_alias in aliases_lower or clean_alias in item["canonical_name"].lower():
-                matched_entry = item
-                match_tier = "ALIAS"
-                break
-                
-    if not matched_entry:
+                canonical_name = row["canonical_name"]
+                max_limit = row["max_limit_mg_kg"]
+                reg_ref = row["regulation_reference"]
+
+        # Tier 2: Match by chemical alias / name in SQLite
+        if not matched_cas and chemical_alias:
+            alias_clean = chemical_alias.strip().lower()
+            cursor.execute(
+                "SELECT cas_number FROM chemical_aliases WHERE alias = ? LIMIT 1",
+                (alias_clean,)
+            )
+            alias_row = cursor.fetchone()
+
+            if not alias_row:
+                # Substring or like match
+                cursor.execute(
+                    "SELECT cas_number FROM chemical_aliases WHERE alias LIKE ? OR ? LIKE ('%' || alias || '%') LIMIT 1",
+                    (f"%{alias_clean}%", alias_clean)
+                )
+                alias_row = cursor.fetchone()
+
+            if alias_row:
+                found_cas = alias_row["cas_number"]
+                cursor.execute(
+                    "SELECT canonical_name, max_limit_mg_kg, regulation_reference FROM mrl_rules WHERE cas_number = ? AND hs4_prefix = ? AND market = ? LIMIT 1",
+                    (found_cas, hs4, market)
+                )
+                row = cursor.fetchone()
+                if not row:
+                    cursor.execute(
+                        "SELECT canonical_name, max_limit_mg_kg, regulation_reference FROM mrl_rules WHERE cas_number = ? AND market = ? LIMIT 1",
+                        (found_cas, market)
+                    )
+                    row = cursor.fetchone()
+
+                if row:
+                    matched_cas = found_cas
+                    match_tier = "ALIAS"
+                    canonical_name = row["canonical_name"]
+                    max_limit = row["max_limit_mg_kg"]
+                    reg_ref = row["regulation_reference"]
+
+        # Also check direct name match in mrl_rules if not found via aliases table
+        if not matched_cas and chemical_alias:
+            alias_clean = chemical_alias.strip().lower()
+            cursor.execute(
+                "SELECT cas_number, canonical_name, max_limit_mg_kg, regulation_reference FROM mrl_rules WHERE LOWER(canonical_name) LIKE ? AND hs4_prefix = ? LIMIT 1",
+                (f"%{alias_clean}%", hs4)
+            )
+            row = cursor.fetchone()
+            if not row:
+                cursor.execute(
+                    "SELECT cas_number, canonical_name, max_limit_mg_kg, regulation_reference FROM mrl_rules WHERE LOWER(canonical_name) LIKE ? LIMIT 1",
+                    (f"%{alias_clean}%",)
+                )
+                row = cursor.fetchone()
+
+            if row:
+                matched_cas = row["cas_number"]
+                match_tier = "NAME_SEARCH"
+                canonical_name = row["canonical_name"]
+                max_limit = row["max_limit_mg_kg"]
+                reg_ref = row["regulation_reference"]
+    finally:
+        conn.close()
+
+    if not matched_cas:
         return ChemicalLookupResponse(
             matched=False,
             match_tier=None,
@@ -164,21 +171,19 @@ def lookup_chemical_mrl(
             substance_name=chemical_alias,
             commodity_hs4=hs4,
             commodity_name=commodity_name,
-            max_limit_mg_kg=None,
-            regulation_reference=None,
+            max_limit_mg_kg=0.01,
+            regulation_reference="Regulation (EC) 396/2005 Article 18(1)(b) (Statutory Default LOQ)",
             notes=f"Substance not matched by CAS '{cas_number}' or alias '{chemical_alias}'. Default EU default limit of 0.01 mg/kg applies under Regulation (EC) 396/2005 Article 18(1)(b)."
         )
-        
-    mrl_val = matched_entry["mrls"].get(hs4, matched_entry["mrls"].get("default", 0.01))
-    
+
     return ChemicalLookupResponse(
         matched=True,
         match_tier=match_tier,
-        cas_number=matched_entry["cas_number"],
-        substance_name=matched_entry["canonical_name"],
+        cas_number=matched_cas,
+        substance_name=canonical_name,
         commodity_hs4=hs4,
         commodity_name=commodity_name,
-        max_limit_mg_kg=mrl_val,
-        regulation_reference=matched_entry["regulation_reference"],
-        notes=f"Matched via {match_tier}. Normalized HS {raw_hs_code} -> 4-digit prefix {hs4}."
+        max_limit_mg_kg=max_limit,
+        regulation_reference=reg_ref,
+        notes=f"Matched via SQLite database ({match_tier}). Normalized HS {raw_hs_code} -> 4-digit prefix {hs4}."
     )

@@ -164,10 +164,11 @@ async def generate_visual_card(data: Dict[str, Any]) -> Dict[str, Any]:
                     return client.models.generate_content(
                         model="gemini-nano-banana-2.1",
                         contents=prompt,
+                        config=types.GenerateContentConfig(response_modalities=["IMAGE"])
                     )
                 return await loop.run_in_executor(None, _do_generate)
 
-            res = await asyncio.wait_for(call_api(), timeout=12.0)
+            res = await asyncio.wait_for(call_api(), timeout=15.0)
             
             # Check for image parts
             if res.candidates and res.candidates[0].content and res.candidates[0].content.parts:

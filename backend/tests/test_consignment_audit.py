@@ -49,3 +49,29 @@ def test_audit_rotterdam_sample_packet():
     assert "CRITICAL NON-COMPLIANCE FINDINGS" in notices["english_notice"]
     assert "సరఫరాదారు అత్యవసర సమ్మతి హెచ్చరిక నోటీసు" in notices["telugu_notice"]
     assert "18,050" in notices["telugu_notice"]
+
+def test_reverify_endpoint():
+    """Tests the real deterministic statutory re-evaluation endpoint."""
+    # Chlorpyrifos MRL is 0.01 mg/kg
+    res_pass = client.post("/api/v1/audit/re-verify", json={
+        "analyte_name": "Chlorpyrifos",
+        "confirmed_value": 0.008,
+        "hs_code": "09042211"
+    })
+    assert res_pass.status_code == 200
+    d_pass = res_pass.json()
+    assert d_pass["compliance_status"] == "PASS"
+    assert d_pass["confirmed_value_mg_kg"] == 0.008
+    assert d_pass["legal_mrl_mg_kg"] == 0.01
+
+    res_fail = client.post("/api/v1/audit/re-verify", json={
+        "analyte_name": "Chlorpyrifos",
+        "confirmed_value": 0.05,
+        "hs_code": "09042211"
+    })
+    assert res_fail.status_code == 200
+    d_fail = res_fail.json()
+    assert d_fail["compliance_status"] == "CRITICAL_BLOCK"
+    assert d_fail["confirmed_value_mg_kg"] == 0.05
+    assert d_fail["legal_mrl_mg_kg"] == 0.01
+

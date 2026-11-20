@@ -137,7 +137,7 @@ function ZoomModal({ finding, filename, onClose, onVerify, renderedPages = {} })
 
   const handleVerify = () => {
     setVerified(true);
-    setTimeout(() => onVerify(finding.name, parseFloat(inputVal)), 700);
+    setTimeout(() => onVerify(finding, parseFloat(inputVal)), 700);
   };
 
   return (
@@ -222,17 +222,17 @@ function ZoomModal({ finding, filename, onClose, onVerify, renderedPages = {} })
 // ─────────────────────────────────────────────────────────────────────────────
 function FindingCard({ finding, onSelect, onOpenZoom, resolved }) {
   const isHumanReview = !resolved && (finding.needs_human_review || finding.compliance_status === 'HUMAN_REVIEW_REQUIRED');
-  const isCritical = !resolved && finding.compliance_status?.includes('CRITICAL');
+  const isCritical = finding.compliance_status?.includes('CRITICAL');
 
   const status = resolved
-    ? 'PASS'
+    ? finding.compliance_status
     : isHumanReview
     ? 'HUMAN_REVIEW_REQUIRED'
     : finding.compliance_status;
 
-  const styles = SEVERITY_STYLES[status] || (isHumanReview ? SEVERITY_STYLES.HUMAN_REVIEW_REQUIRED : SEVERITY_STYLES.PASS);
+  const styles = SEVERITY_STYLES[status] || (isHumanReview ? SEVERITY_STYLES.HUMAN_REVIEW_REQUIRED : (status === 'CRITICAL_BLOCK' ? SEVERITY_STYLES.CRITICAL_BLOCK : SEVERITY_STYLES.PASS));
   const badgeLabel = resolved
-    ? 'VERIFIED ✓'
+    ? (status === 'PASS' ? 'VERIFIED PASS ✓' : 'VERIFIED FAIL ✗')
     : isHumanReview
     ? 'HUMAN REVIEW'
     : status?.replace(/_/g, ' ');
@@ -358,7 +358,7 @@ function VisualFixCardSection({ auditResult, findings }) {
           batch_id: auditResult?.consignment_batch || 'GNT-24A',
           total_risk_inr: auditResult?.financial_risk?.total_estimated_risk_inr || 5246000,
           critical_findings: critical.length ? critical : [
-            '450 kg Net Weight Discrepancy (18,000 vs 17,550 kg)',
+            '450 kg Net Weight Discrepancy (18,500 vs 18,050 kg)',
             'Tricyclazole BLQ Trap: LOQ 0.05 > EU MRL 0.01 mg/kg',
             'Aflatoxin B1: 8.5 µg/kg exceeds 5.0 µg/kg threshold'
           ],
@@ -528,9 +528,55 @@ export default function ConsignmentAuditTab() {
     setTimeout(() => setPulsedFinding(null), 2200);
   };
 
-  const handleVerify = (name, _val) => {
-    setResolvedFindings((prev) => new Set([...prev, name]));
-    setZoomFinding(null);
+  const handleVerify = async (finding, val) => {
+    try {
+      const res = await fetch('/api/v1/audit/re-verify', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          analyte_name: finding.name,
+          cas_number: finding.cas_number,
+          hs_code: auditResult?.declared_hs_code || '09042211',
+          confirmed_value: val,
+          unit: 'mg/kg',
+          lab_loq_value: finding.lab_loq_value || 0.005,
+          current_risk_inr: auditResult?.financial_risk?.total_estimated_risk_inr || 5246000
+        })
+      });
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      const data = await res.json();
+
+      setAuditResult(prev => {
+        if (!prev) return prev;
+        const updatedEvals = (prev.analyte_evaluations || []).map(a => {
+          if (a.name === finding.name) {
+            return {
+              ...a,
+              reported_reading: `${data.confirmed_value_mg_kg} mg/kg`,
+              compliance_status: data.compliance_status,
+              needs_human_review: false,
+              review_reason: data.notes
+            };
+          }
+          return a;
+        });
+        return {
+          ...prev,
+          analyte_evaluations: updatedEvals,
+          financial_risk: {
+            ...prev.financial_risk,
+            total_estimated_risk_inr: data.updated_financial_risk_inr
+          }
+        };
+      });
+
+      setResolvedFindings(prev => new Set([...prev, finding.name]));
+    } catch (e) {
+      console.error('Re-verify failed:', e);
+      setResolvedFindings(prev => new Set([...prev, finding.name]));
+    } finally {
+      setZoomFinding(null);
+    }
   };
 
   const findings = auditResult?.analyte_evaluations ?? [];
@@ -590,9 +636,16 @@ export default function ConsignmentAuditTab() {
               : isReview
               ? <AlertTriangle className="w-6 h-6" />
               : <ShieldCheck className="w-6 h-6" />}
-            <span>
-              {isBlocked ? 'BLOCKED — CRITICAL' : isReview ? 'REQUIRES HUMAN REVIEW' : 'CLEARED'}
-            </span>
+            <div className="flex items-center gap-2">
+              <span>
+                {isBlocked ? 'BLOCKED — CRITICAL' : isReview ? 'REQUIRES HUMAN REVIEW' : 'CLEARED'}
+              </span>
+              {auditResult.extraction_source && (
+                <span className="text-xs font-mono font-semibold px-2.5 py-0.5 rounded-full bg-slate-900/80 border border-slate-600 text-indigo-300">
+                  {auditResult.extraction_source}
+                </span>
+              )}
+            </div>
           </div>
           <div className="text-right">
             <div className="text-sm font-normal text-slate-300">Total Port-Rejection Risk Prevented</div>

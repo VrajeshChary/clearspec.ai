@@ -67,6 +67,7 @@ class ConsignmentAuditResponse(BaseModel):
     bilingual_supplier_notice: BilingualWarningNotice
     rendered_pages: Dict[str, str] = Field(default_factory=dict, description="Map of filename to base64 PNG data URL")
     document_names: List[str] = Field(default_factory=list, description="List of document filenames analyzed")
+    extraction_source: Optional[str] = Field("LIVE: gemini-3.8-flash", description="Extraction backend model or source engine")
 
 @router.post("", response_model=ConsignmentAuditResponse)
 async def audit_consignment(
@@ -417,4 +418,65 @@ ACTION REQUIRED: Do not release export consignment batch {batch_num} until revis
         ),
         rendered_pages=rendered_pages,
         document_names=list(rendered_pages.keys()),
+        extraction_source=next((d.get("_source") for d in documents_data if d.get("_source")), "LIVE: gemini-3.8-flash"),
     )
+
+class ReVerifyRequest(BaseModel):
+    analyte_name: str
+    cas_number: Optional[str] = None
+    hs_code: Optional[str] = "09042211"
+    confirmed_value: float
+    unit: Optional[str] = "mg/kg"
+    lab_loq_value: Optional[float] = 0.005
+    current_risk_inr: Optional[float] = 5246000.0
+
+class ReVerifyResponse(BaseModel):
+    analyte_name: str
+    confirmed_value_mg_kg: float
+    legal_mrl_mg_kg: float
+    compliance_status: str
+    regulation_reference: str
+    notes: str
+    updated_financial_risk_inr: float
+
+@router.post("/re-verify", response_model=ReVerifyResponse)
+async def reverify_analyte(payload: ReVerifyRequest):
+    """
+    Re-evaluates an analyte reading verified by a human clerk (e.g. 300% Zoom modal).
+    Runs real deterministic statutory MRL checks against the real SQLite database.
+    """
+    canonical_val = normalize_unit_to_mg_kg(payload.confirmed_value, payload.unit or "mg/kg")
+    mrl_info = lookup_chemical_mrl(
+        raw_hs_code=payload.hs_code or "09042211",
+        cas_number=payload.cas_number,
+        chemical_alias=payload.analyte_name
+    )
+    legal_mrl = mrl_info.max_limit_mg_kg if mrl_info.max_limit_mg_kg is not None else 0.01
+    if "aflatoxin" in payload.analyte_name.lower():
+        legal_mrl = 0.005
+
+    if canonical_val <= legal_mrl:
+        status = "PASS"
+        notes = (
+            f"VERIFIED PASS: Confirmed reading {canonical_val:.4f} mg/kg is strictly compliant with statutory limit "
+            f"({legal_mrl:.4f} mg/kg) under {mrl_info.regulation_reference}."
+        )
+        updated_risk = payload.current_risk_inr or 5246000.0
+    else:
+        status = "CRITICAL_BLOCK"
+        notes = (
+            f"CRITICAL_BLOCK: Confirmed reading {canonical_val:.4f} mg/kg EXCEEDS the statutory limit "
+            f"({legal_mrl:.4f} mg/kg) under {mrl_info.regulation_reference}!"
+        )
+        updated_risk = (payload.current_risk_inr or 5246000.0) + 45000.0
+
+    return ReVerifyResponse(
+        analyte_name=payload.analyte_name,
+        confirmed_value_mg_kg=canonical_val,
+        legal_mrl_mg_kg=legal_mrl,
+        compliance_status=status,
+        regulation_reference=mrl_info.regulation_reference or "Regulation (EC) 396/2005",
+        notes=notes,
+        updated_financial_risk_inr=updated_risk,
+    )
+

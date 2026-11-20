@@ -65,17 +65,24 @@ async def ask_text_fallback(payload: AskTextRequest):
     if GEMINI_API_KEY:
         try:
             from google import genai
-            client = genai.Client(api_key=GEMINI_API_KEY)
-            interaction = client.interactions.create(
+            from google.genai import types
+
+            client = genai.Client(api_key=GEMINI_API_KEY, http_options={"api_version": "v1beta"})
+            config = types.GenerateContentConfig(
+                system_instruction=sys_prompt,
+                temperature=0.2,
+            )
+            res = await client.aio.models.generate_content(
                 model="gemini-3.8-flash",
-                input=full_prompt
+                contents=payload.question,
+                config=config,
             )
-            out_text = interaction.output_text.strip()
-            return AskTextResponse(
-                answer=out_text,
-                model_used="gemini-3.8-flash",
-                language=payload.language or "en"
-            )
+            if res and res.text:
+                return AskTextResponse(
+                    answer=res.text.strip(),
+                    model_used="gemini-3.8-flash",
+                    language=payload.language or "en"
+                )
         except Exception:
             pass
 
