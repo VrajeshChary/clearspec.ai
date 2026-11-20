@@ -1,0 +1,61 @@
+name: Backend CI & Regulatory Tests
+
+on:
+  push:
+    branches: [ main ]
+    paths:
+      - 'backend/**'
+      - '.github/workflows/ci-backend.yml'
+  pull_request:
+    branches: [ main ]
+    paths:
+      - 'backend/**'
+      - '.github/workflows/ci-backend.yml'
+  workflow_dispatch:
+
+jobs:
+  test:
+    name: PyTest & Regulatory Engine Validation (Python ${{ matrix.python-version }})
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        python-version: ["3.12", "3.13"]
+
+    steps:
+      - name: Checkout Repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python ${{ matrix.python-version }}
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python-version }}
+          cache: 'pip'
+          cache-dependency-path: 'backend/requirements.txt'
+
+      - name: Install System Dependencies (MuPDF / Fonts)
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libmupdf-dev mupdf-tools ghostscript
+
+      - name: Install Python Dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r backend/requirements.txt
+          pip install pytest-cov ruff
+
+      - name: Lint Code with Ruff
+        run: |
+          ruff check backend/app backend/tests --ignore E501,F401,F841 || true
+
+      - name: Pre-Generate Rotterdam Sample PDFs
+        run: |
+          python backend/app/generate_samples.py
+          ls -la backend/sample_packets/packet_a_rotterdam/
+
+      - name: Run PyTest Suite
+        env:
+          CONFIDENCE_THRESHOLD: 0.85
+          GEMINI_API_KEY: "mock_test_key_ci_fallback"
+        run: |
+          python -m pytest backend/tests -v --tb=short --durations=10
