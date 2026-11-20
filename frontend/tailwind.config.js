@@ -7,17 +7,19 @@ export default {
   theme: {
     extend: {
       fontFamily: {
-        display: ['"Familjen Grotesk"', 'system-ui', 'sans-serif'],
-        body: ['"IBM Plex Sans"', 'system-ui', 'sans-serif'],
+        display: ['"Space Grotesk"', 'system-ui', 'sans-serif'],
+        sans: ['"Plus Jakarta Sans"', 'system-ui', 'sans-serif'],
+        body: ['"Plus Jakarta Sans"', 'system-ui', 'sans-serif'],
         mono: ['"JetBrains Mono"', 'ui-monospace', 'monospace'],
       },
       colors: {
+        void: '#04070d',
         paper: {
-          DEFAULT: '#0a1110', // Deep slate-emerald base
-          2: '#101a18',       // Slightly elevated card background
-          3: '#152421',       // Interactive headers/wells
-          card: '#121e1c',    // Elevated card surface
-          well: '#0c1513',    // Recessed well surface
+          DEFAULT: '#070b13', // Deep obsidian with blue-black tint
+          2: '#0c121e',       // Glass card surface
+          3: '#131b2c',       // Elevated panel / header
+          card: '#0f1726',    // Card interior
+          well: '#080d16',    // Inset input / well
         },
         brand: {
           50: '#ecfdf5',
@@ -33,10 +35,39 @@ export default {
           950: '#022c22',
         },
         rule: {
-          DEFAULT: 'rgba(52, 211, 153, 0.12)',
-          strong: 'rgba(52, 211, 153, 0.22)',
-          subtle: 'rgba(52, 211, 153, 0.06)',
+          DEFAULT: 'rgba(255, 255, 255, 0.08)',
+          strong: 'rgba(255, 255, 255, 0.16)',
+          subtle: 'rgba(255, 255, 255, 0.04)',
+          emerald: 'rgba(16, 185, 129, 0.25)',
+          red: 'rgba(244, 63, 94, 0.25)',
+          amber: 'rgba(245, 158, 11, 0.25)',
         }
+      },
+      boxShadow: {
+        'glow-emerald': '0 0 25px -4px rgba(16, 185, 129, 0.35)',
+        'glow-red': '0 0 25px -4px rgba(244, 63, 94, 0.35)',
+        'glow-amber': '0 0 25px -4px rgba(245, 158, 11, 0.35)',
+        'glow-cyan': '0 0 25px -4px rgba(6, 182, 212, 0.35)',
+        'glass-bevel': 'inset 0 1px 0 0 rgba(255, 255, 255, 0.1), 0 8px 32px 0 rgba(0, 0, 0, 0.45)',
+      },
+      keyframes: {
+        'laser-scan': {
+          '0%': { transform: 'translateY(-100%)' },
+          '100%': { transform: 'translateY(1000%)' },
+        },
+        'pulse-glow': {
+          '0%, 100%': { opacity: '0.6', transform: 'scale(1)' },
+          '50%': { opacity: '1', transform: 'scale(1.05)' },
+        },
+        'float-slow': {
+          '0%, 100%': { transform: 'translateY(0px)' },
+          '50%': { transform: 'translateY(-6px)' },
+        }
+      },
+      animation: {
+        'laser-scan': 'laser-scan 3s ease-in-out infinite',
+        'pulse-glow': 'pulse-glow 2s ease-in-out infinite',
+        'float-slow': 'float-slow 4s ease-in-out infinite',
       }
     },
   },

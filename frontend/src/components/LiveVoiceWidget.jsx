@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
+import { motion, AnimatePresence } from 'framer-motion';
 import {
   Mic,
   MicOff,
@@ -12,15 +13,16 @@ import {
   X,
   VolumeX,
   Languages,
-  HelpCircle
+  HelpCircle,
+  Headphones
 } from 'lucide-react';
 import { askLiveText } from '../services/api';
 
 const QUICK_PROMPTS = [
-  { label: 'Why is shipment blocked?', text: 'Why is consignment batch GNT-24A under a critical block?' },
-  { label: 'Explain BLQ trap', text: 'Explain why Tricyclazole triggered the BLQ sensitivity trap.' },
+  { label: 'Why blocked?', text: 'Why is consignment batch GNT-24A under a critical block?' },
+  { label: 'BLQ trap rationale', text: 'Explain why Tricyclazole triggered the BLQ sensitivity trap.' },
   { label: 'తెలుగులో వివరించండి', text: 'ఈ కన్సైన్‌మెంట్ ఎందుకు ఆపివేయబడిందో తెలుగులో వివరించండి.', isTe: true },
-  { label: 'Risk breakdown', text: 'Break down the ₹52.46 Lakh financial risk exposure in detail.' }
+  { label: '₹52.46L risk breakdown', text: 'Break down the ₹52.46 Lakh financial risk exposure in detail.' }
 ];
 
 export default function LiveVoiceWidget({ auditResult, isOpen, onClose }) {
@@ -189,7 +191,7 @@ export default function LiveVoiceWidget({ auditResult, isOpen, onClose }) {
         ...prev,
         {
           speaker: 'system',
-          text: 'Microphone unavailable in this environment. You can use text prompts or quick buttons below for instant answers.',
+          text: 'Microphone permission was not granted or is unavailable in this environment. You can use text prompts or quick buttons below for instant answers.',
           time: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
         },
       ]);
@@ -256,133 +258,161 @@ export default function LiveVoiceWidget({ auditResult, isOpen, onClose }) {
   if (!isOpen) return null;
 
   return (
-    <div className="fixed bottom-4 right-4 z-50 w-96 max-w-[calc(100vw-2rem)] reg-card shadow-2xl border-rule-strong flex flex-col overflow-hidden animate-in fade-in slide-in-from-bottom-4 duration-200">
-      {/* Header */}
-      <div className="px-4 py-3 hairline-b bg-paper-2 flex items-center justify-between">
-        <div className="flex items-center space-x-2">
-          <div className="w-7 h-7 rounded-md bg-emerald-600/20 border border-emerald-500/40 flex items-center justify-center text-emerald-400">
-            <Radio className="w-3.5 h-3.5 animate-pulse text-emerald-400" />
-          </div>
-          <div>
-            <h4 className="text-xs font-display font-semibold text-white tracking-tight flex items-center space-x-1.5">
-              <span>ClearSpec Live Voice</span>
-              <span className="text-[9px] font-mono px-1 py-0.2 bg-emerald-950 text-emerald-300 border border-emerald-800 rounded">
-                Gemini 3.8
-              </span>
-            </h4>
-            <span className="text-[10px] text-muted">Bilingual English + Telugu Auditor</span>
-          </div>
-        </div>
-
-        <div className="flex items-center space-x-1">
-          <button
-            onClick={() => setIsMuted(!isMuted)}
-            title={isMuted ? 'Unmute Audio' : 'Mute Audio'}
-            className="p-1 rounded text-muted hover:text-ink hover:bg-paper-3 transition-colors"
-          >
-            {isMuted ? <VolumeX className="w-3.5 h-3.5 text-amber-400" /> : <Volume2 className="w-3.5 h-3.5" />}
-          </button>
-          <button
-            onClick={onClose}
-            className="p-1 rounded text-muted hover:text-ink hover:bg-paper-3 transition-colors"
-          >
-            <X className="w-4 h-4" />
-          </button>
-        </div>
-      </div>
-
-      {/* Transcript Log */}
-      <div className="h-64 overflow-y-auto p-3 space-y-2.5 bg-paper-well text-xs font-body">
-        {transcripts.map((t, i) => {
-          const isUser = t.speaker === 'user';
-          const isSys = t.speaker === 'system';
-          return (
-            <div key={i} className={`flex flex-col ${isUser ? 'items-end' : 'items-start'}`}>
-              <div
-                className={`max-w-[85%] rounded-lg p-2.5 text-xs leading-relaxed ${
-                  isUser
-                    ? 'bg-emerald-600 text-white rounded-br-none shadow-sm'
-                    : isSys
-                    ? 'bg-amber-950/60 text-amber-200 border border-amber-800/60'
-                    : 'bg-paper-3 text-ink-2 border border-rule rounded-bl-none shadow-sm'
-                }`}
-              >
-                <div className="flex items-center justify-between gap-2 mb-1 text-[10px] opacity-70">
-                  <span className="font-semibold">{isUser ? 'You' : isSys ? 'System' : 'Auditor (Live)'}</span>
-                  <span className="font-mono text-[9px]">{t.time}</span>
-                </div>
-                <p className="whitespace-pre-wrap">{t.text}</p>
-              </div>
+    <AnimatePresence>
+      <motion.div
+        initial={{ opacity: 0, y: 20, scale: 0.95 }}
+        animate={{ opacity: 1, y: 0, scale: 1 }}
+        exit={{ opacity: 0, y: 20, scale: 0.95 }}
+        transition={{ duration: 0.2 }}
+        className="fixed bottom-6 right-6 z-50 w-96 max-w-[calc(100vw-3rem)] rounded-2xl overflow-hidden backdrop-blur-2xl bg-[#070b13]/95 border border-emerald-500/30 shadow-[0_25px_60px_rgba(0,0,0,0.85)] flex flex-col"
+      >
+        {/* Top Header Cockpit */}
+        <div className="px-4 py-3 bg-[#0a0f1c] border-b border-white/[0.08] flex items-center justify-between">
+          <div className="flex items-center space-x-2.5">
+            <div className="w-8 h-8 rounded-xl bg-emerald-500/10 border border-emerald-500/30 flex items-center justify-center text-emerald-400 relative">
+              <Radio className="w-4 h-4 text-emerald-400" />
+              {isRecording && (
+                <span className="absolute -top-0.5 -right-0.5 w-2 h-2 rounded-full bg-rose-500 animate-ping" />
+              )}
             </div>
-          );
-        })}
-        {isThinking && (
-          <div className="flex items-center space-x-2 text-muted text-xs p-2">
-            <Loader2 className="w-3.5 h-3.5 animate-spin text-emerald-400" />
-            <span className="font-mono text-[11px]">Gemini reasoning over consignment ledger...</span>
+            <div>
+              <h4 className="text-xs font-display font-bold text-white tracking-tight flex items-center space-x-1.5">
+                <span>ClearSpec Live Voice</span>
+                <span className="text-[9px] font-mono px-1.5 py-0.5 bg-emerald-500/10 text-emerald-300 border border-emerald-500/30 rounded-full">
+                  Gemini 3.8 Live
+                </span>
+              </h4>
+              <span className="text-[10px] text-slate-400 font-mono">EN / TE Bilingual Auditor</span>
+            </div>
+          </div>
+
+          <div className="flex items-center space-x-1">
+            <button
+              onClick={() => setIsMuted(!isMuted)}
+              title={isMuted ? 'Unmute Audio' : 'Mute Audio'}
+              className="p-1.5 rounded-lg text-slate-400 hover:text-white hover:bg-white/[0.05] transition-colors"
+            >
+              {isMuted ? <VolumeX className="w-4 h-4 text-amber-400" /> : <Volume2 className="w-4 h-4" />}
+            </button>
+            <button
+              onClick={onClose}
+              className="p-1.5 rounded-lg text-slate-400 hover:text-white hover:bg-white/[0.05] transition-colors"
+            >
+              <X className="w-4 h-4" />
+            </button>
+          </div>
+        </div>
+
+        {/* Dynamic Sound Wave visualizer strip (active when recording or thinking) */}
+        {(isRecording || isThinking) && (
+          <div className="px-4 py-2 bg-emerald-950/40 border-b border-emerald-500/20 flex items-center justify-between text-[11px] text-emerald-300 font-mono">
+            <span className="flex items-center space-x-2">
+              <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse" />
+              <span>{isRecording ? 'Listening via Web Audio API...' : 'Gemini reasoning...'}</span>
+            </span>
+            <div className="flex items-center space-x-0.5 h-3">
+              <span className="w-0.5 h-full bg-emerald-400 animate-pulse" />
+              <span className="w-0.5 h-2 bg-emerald-400 animate-pulse delay-75" />
+              <span className="w-0.5 h-full bg-emerald-400 animate-pulse delay-150" />
+              <span className="w-0.5 h-1.5 bg-emerald-400 animate-pulse delay-200" />
+              <span className="w-0.5 h-full bg-emerald-400 animate-pulse" />
+            </div>
           </div>
         )}
-        <div ref={transcriptEndRef} />
-      </div>
 
-      {/* Quick Prompts Bar */}
-      <div className="px-3 py-2 hairline-t bg-paper-2 flex flex-wrap gap-1.5">
-        {QUICK_PROMPTS.map((p, idx) => (
-          <button
-            key={idx}
-            onClick={() => handleSendText(p.text)}
-            className="text-[10px] px-2 py-0.5 rounded bg-paper-3 hover:bg-emerald-600/20 text-ink-2 hover:text-emerald-300 border border-rule hover:border-emerald-500/40 transition-colors"
-          >
-            {p.label}
-          </button>
-        ))}
-      </div>
-
-      {/* Mic & Input Controls */}
-      <div className="p-3 hairline-t bg-paper-3 flex items-center space-x-2">
-        <button
-          onClick={isRecording ? stopRecording : startRecording}
-          disabled={isConnecting}
-          title={isRecording ? 'Stop Recording' : 'Push to Talk (Gemini 3.8 Live)'}
-          className={`shrink-0 w-9 h-9 rounded-full flex items-center justify-center transition-colors ${
-            isRecording
-              ? 'bg-red-600 text-white animate-pulse shadow-lg shadow-red-900/50'
-              : 'bg-emerald-600 hover:bg-emerald-500 text-white shadow-md'
-          }`}
-        >
-          {isConnecting ? (
-            <Loader2 className="w-4 h-4 animate-spin" />
-          ) : isRecording ? (
-            <MicOff className="w-4 h-4" />
-          ) : (
-            <Mic className="w-4 h-4" />
+        {/* Transcript Dialogue Scrollable Stream */}
+        <div className="h-64 overflow-y-auto p-4 space-y-3 bg-[#04070d]/90 text-xs font-sans">
+          {transcripts.map((t, i) => {
+            const isUser = t.speaker === 'user';
+            const isSys = t.speaker === 'system';
+            return (
+              <div key={i} className={`flex flex-col ${isUser ? 'items-end' : 'items-start'}`}>
+                <div
+                  className={`max-w-[85%] rounded-2xl p-3 text-xs leading-relaxed ${
+                    isUser
+                      ? 'bg-emerald-500 text-slate-950 font-medium rounded-br-none shadow-md shadow-emerald-500/10'
+                      : isSys
+                      ? 'bg-rose-500/10 text-rose-200 border border-rose-500/30'
+                      : 'bg-[#0f172a] text-slate-200 border border-white/[0.08] rounded-bl-none shadow-md'
+                  }`}
+                >
+                  <div className="flex items-center justify-between gap-2 mb-1 text-[10px] opacity-75">
+                    <span className="font-semibold">{isUser ? 'You' : isSys ? 'System' : 'Auditor (Live)'}</span>
+                    <span className="font-mono text-[9px]">{t.time}</span>
+                  </div>
+                  <p className="whitespace-pre-wrap">{t.text}</p>
+                </div>
+              </div>
+            );
+          })}
+          {isThinking && (
+            <div className="flex items-center space-x-2 text-slate-400 text-xs p-2">
+              <Loader2 className="w-3.5 h-3.5 animate-spin text-emerald-400" />
+              <span className="font-mono text-[11px]">Gemini analyzing consignment ledger...</span>
+            </div>
           )}
-        </button>
+          <div ref={transcriptEndRef} />
+        </div>
 
-        <form
-          onSubmit={(e) => {
-            e.preventDefault();
-            handleSendText();
-          }}
-          className="flex-1 flex items-center space-x-1"
-        >
-          <input
-            type="text"
-            value={textInput}
-            onChange={(e) => setTextInput(e.target.value)}
-            placeholder={isRecording ? 'Streaming audio live...' : 'Ask in English or తెలుగు...'}
-            disabled={isRecording}
-            className="flex-1 bg-paper-well text-ink border border-rule rounded px-2.5 py-1.5 text-xs focus:outline-none focus:border-emerald-500 placeholder:text-muted"
-          />
+        {/* Quick Prompts Bar */}
+        <div className="px-3.5 py-2.5 border-t border-white/[0.06] bg-[#070b13] flex flex-wrap gap-1.5">
+          {QUICK_PROMPTS.map((p, idx) => (
+            <button
+              key={idx}
+              onClick={() => handleSendText(p.text)}
+              className="text-[10px] px-2.5 py-1 rounded-lg bg-slate-900 hover:bg-emerald-500/20 text-slate-300 hover:text-emerald-300 border border-white/[0.08] hover:border-emerald-500/30 transition-all font-mono"
+            >
+              {p.label}
+            </button>
+          ))}
+        </div>
+
+        {/* Mic & Input Controls */}
+        <div className="p-3.5 border-t border-white/[0.08] bg-[#0a0f1c] flex items-center space-x-2.5">
           <button
-            type="submit"
-            disabled={!textInput.trim() || isThinking || isRecording}
-            className="p-1.5 rounded bg-emerald-600 text-white disabled:opacity-40 disabled:hover:bg-emerald-600 hover:bg-emerald-500 transition-colors"
+            onClick={isRecording ? stopRecording : startRecording}
+            disabled={isConnecting}
+            title={isRecording ? 'Stop Recording' : 'Push to Talk (Gemini 3.8 Live)'}
+            className={`shrink-0 w-10 h-10 rounded-xl flex items-center justify-center transition-all ${
+              isRecording
+                ? 'bg-rose-600 text-white animate-pulse shadow-lg shadow-rose-600/40 ring-2 ring-rose-400/50'
+                : 'bg-emerald-500 hover:bg-emerald-400 text-slate-950 font-bold shadow-md shadow-emerald-500/20'
+            }`}
           >
-            <Send className="w-3.5 h-3.5" />
+            {isConnecting ? (
+              <Loader2 className="w-4 h-4 animate-spin" />
+            ) : isRecording ? (
+              <MicOff className="w-4 h-4" />
+            ) : (
+              <Mic className="w-4 h-4" />
+            )}
           </button>
-        </form>
-      </div>
-    </div>
+
+          <form
+            onSubmit={(e) => {
+              e.preventDefault();
+              handleSendText();
+            }}
+            className="flex-1 flex items-center space-x-2"
+          >
+            <input
+              type="text"
+              value={textInput}
+              onChange={(e) => setTextInput(e.target.value)}
+              placeholder={isRecording ? 'Streaming audio live...' : 'Ask in English or తెలుగు...'}
+              disabled={isRecording}
+              className="flex-1 bg-[#04070d] text-slate-100 border border-white/[0.1] rounded-xl px-3 py-2 text-xs focus:outline-none focus:border-emerald-500/60 placeholder:text-slate-500 font-sans"
+            />
+            <button
+              type="submit"
+              disabled={!textInput.trim() || isThinking || isRecording}
+              className="p-2 rounded-xl bg-emerald-500 text-slate-950 disabled:opacity-30 disabled:hover:bg-emerald-500 hover:bg-emerald-400 transition-all shadow-sm"
+            >
+              <Send className="w-3.5 h-3.5" />
+            </button>
+          </form>
+        </div>
+      </motion.div>
+    </AnimatePresence>
   );
 }

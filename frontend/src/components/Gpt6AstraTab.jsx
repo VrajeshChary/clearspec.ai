@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react';
+import { motion, AnimatePresence } from 'framer-motion';
 import {
   Cpu,
   Key,
@@ -16,7 +17,9 @@ import {
   ShieldAlert,
   Wallet,
   Zap,
-  Check
+  Check,
+  Activity,
+  Server
 } from 'lucide-react';
 import { verifyAstraKey, getAstraCapabilities } from '../services/api';
 
@@ -58,11 +61,11 @@ export default function Gpt6AstraTab() {
       setTestResult(res);
     } catch (err) {
       setTestResult({
-        is_valid: false,
+        is_authenticated: false,
         key_analysis: {
           length: (keyToTest || apiKey).length,
           prefix: 'sk-',
-          format_summary: 'Connection error during test',
+          format_summary: 'Connection error during probe',
           likely_service: 'Backend unreachable'
         },
         test_results: [
@@ -76,7 +79,7 @@ export default function Gpt6AstraTab() {
             details: err.message
           }
         ],
-        recommendations: ['Ensure the backend server is running and accessible.']
+        recommendations: ['Ensure the backend server is running and accessible on port 8080.']
       });
     } finally {
       setLoading(false);
@@ -109,50 +112,57 @@ export default function Gpt6AstraTab() {
         if (index === chunks.length - 1) {
           setIsSimulating(false);
         }
-      }, (index + 1) * 220);
+      }, (index + 1) * 180);
     });
   };
 
   return (
     <div className="space-y-6">
-      {/* Header */}
-      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+      {/* Header Banner */}
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 glass-panel p-6 rounded-2xl relative overflow-hidden">
+        <div className="absolute -right-20 -top-20 w-64 h-64 bg-cyan-500/10 rounded-full blur-3xl pointer-events-none" />
         <div>
-          <div className="flex items-center space-x-2">
+          <div className="flex items-center space-x-2.5">
             <h2 className="text-xl sm:text-2xl font-display font-bold text-white tracking-tight">
               GPT-6 Astra & Gateway Diagnostics Hub
             </h2>
-            <span className="text-xs font-mono px-2 py-0.5 rounded bg-emerald-950/80 text-emerald-300 border border-emerald-800">
-              Frontier Diagnostics
+            <span className="text-xs font-mono px-2.5 py-0.5 rounded-full bg-cyan-500/10 text-cyan-300 border border-cyan-500/30">
+              Frontier Engine Probe
             </span>
           </div>
-          <p className="text-xs text-muted mt-1">
-            Diagnostic probe testing API keys against Xingchi API (<code className="text-emerald-400">api.xingchiapi.com</code>), OpenAI, and OpenRouter with wire API validation.
+          <p className="text-xs text-slate-400 mt-1 max-w-2xl leading-relaxed">
+            Multi-target gateway validator checking API tokens against Xingchi API (<code className="text-cyan-400 font-mono">api.xingchiapi.com</code>), OpenAI, and OpenRouter with real-time wire verification.
           </p>
         </div>
 
         {/* Sub-tab pills */}
-        <div className="flex items-center bg-paper-well p-1 rounded-lg border border-rule self-start sm:self-auto">
+        <div className="flex items-center bg-[#070b13] p-1 rounded-xl border border-white/[0.08] self-start sm:self-auto shrink-0">
           <button
             onClick={() => setActiveSubTab('verifier')}
-            className={`px-3 py-1.5 rounded text-xs font-display transition-colors ${
-              activeSubTab === 'verifier' ? 'bg-emerald-600 text-white font-semibold' : 'text-muted hover:text-white'
+            className={`px-3.5 py-1.5 rounded-lg text-xs font-display transition-all ${
+              activeSubTab === 'verifier'
+                ? 'bg-emerald-500 text-slate-950 font-bold shadow-md shadow-emerald-500/20'
+                : 'text-slate-400 hover:text-white'
             }`}
           >
             Key Verifier
           </button>
           <button
             onClick={() => setActiveSubTab('capabilities')}
-            className={`px-3 py-1.5 rounded text-xs font-display transition-colors ${
-              activeSubTab === 'capabilities' ? 'bg-emerald-600 text-white font-semibold' : 'text-muted hover:text-white'
+            className={`px-3.5 py-1.5 rounded-lg text-xs font-display transition-all ${
+              activeSubTab === 'capabilities'
+                ? 'bg-emerald-500 text-slate-950 font-bold shadow-md shadow-emerald-500/20'
+                : 'text-slate-400 hover:text-white'
             }`}
           >
-            Capabilities & Models
+            Model Matrix
           </button>
           <button
             onClick={() => setActiveSubTab('playground')}
-            className={`px-3 py-1.5 rounded text-xs font-display transition-colors ${
-              activeSubTab === 'playground' ? 'bg-emerald-600 text-white font-semibold' : 'text-muted hover:text-white'
+            className={`px-3.5 py-1.5 rounded-lg text-xs font-display transition-all ${
+              activeSubTab === 'playground'
+                ? 'bg-emerald-500 text-slate-950 font-bold shadow-md shadow-emerald-500/20'
+                : 'text-slate-400 hover:text-white'
             }`}
           >
             Astra Playground
@@ -160,259 +170,286 @@ export default function Gpt6AstraTab() {
         </div>
       </div>
 
-      {activeSubTab === 'verifier' && (
-        <div className="space-y-6">
-          {/* Key Input Bar */}
-          <div className="reg-card p-5 space-y-4">
-            <h3 className="font-display font-semibold text-sm text-white hairline-b pb-2 flex items-center space-x-2">
-              <Key className="w-4 h-4 text-amber-400" />
-              <span>API Key Authentication & Endpoint Probe</span>
-            </h3>
-
-            <div className="grid grid-cols-1 md:grid-cols-12 gap-3 items-end text-xs">
-              <div className="md:col-span-6">
-                <label className="block text-muted text-[11px] mb-1">API Key Token</label>
-                <input
-                  type="password"
-                  value={apiKey}
-                  onChange={(e) => setApiKey(e.target.value)}
-                  className="w-full bg-paper-well border border-rule rounded px-3 py-2 text-xs font-mono text-white focus:border-emerald-500"
-                  placeholder="sk-..."
-                />
+      <AnimatePresence mode="wait">
+        {activeSubTab === 'verifier' && (
+          <motion.div
+            key="verifier"
+            initial={{ opacity: 0, y: 6 }}
+            animate={{ opacity: 1, y: 0 }}
+            exit={{ opacity: 0, y: -6 }}
+            className="space-y-6"
+          >
+            {/* Key Input Bar */}
+            <div className="glass-panel p-6 rounded-2xl space-y-4">
+              <div className="flex items-center space-x-2 border-b border-white/[0.08] pb-3">
+                <Key className="w-4 h-4 text-amber-400" />
+                <h3 className="font-display font-semibold text-sm text-white">API Key Authentication & Endpoint Probe</h3>
               </div>
 
-              <div className="md:col-span-3">
-                <label className="block text-muted text-[11px] mb-1">Target Gateway</label>
-                <select
-                  value={provider}
-                  onChange={(e) => setProvider(e.target.value)}
-                  className="w-full bg-paper-well border border-rule rounded px-3 py-2 text-xs text-white"
-                >
-                  <option value="auto">Auto-Detect (Xingchi / OpenAI / OpenRouter)</option>
-                  <option value="xingchi">Xingchi API (api.xingchiapi.com)</option>
-                  <option value="openai">OpenAI Official (api.openai.com)</option>
-                  <option value="openrouter">OpenRouter (openrouter.ai)</option>
-                  <option value="custom">Custom Proxy Base URL</option>
-                </select>
+              <div className="grid grid-cols-1 md:grid-cols-12 gap-3.5 items-end text-xs">
+                <div className="md:col-span-6">
+                  <label className="block text-slate-400 text-xs font-medium mb-1.5">API Key Token</label>
+                  <input
+                    type="password"
+                    value={apiKey}
+                    onChange={(e) => setApiKey(e.target.value)}
+                    className="w-full bg-[#070b13] border border-white/[0.1] rounded-xl px-3.5 py-2.5 text-xs font-mono text-white focus:outline-none focus:border-emerald-500/60"
+                    placeholder="sk-..."
+                  />
+                </div>
+
+                <div className="md:col-span-3">
+                  <label className="block text-slate-400 text-xs font-medium mb-1.5">Target Gateway</label>
+                  <select
+                    value={provider}
+                    onChange={(e) => setProvider(e.target.value)}
+                    className="w-full bg-[#070b13] border border-white/[0.1] rounded-xl px-3.5 py-2.5 text-xs text-white focus:outline-none focus:border-emerald-500/60 font-mono"
+                  >
+                    <option value="auto">Auto-Detect (Xingchi / OpenAI / OpenRouter)</option>
+                    <option value="xingchi">Xingchi API (api.xingchiapi.com)</option>
+                    <option value="openai">OpenAI Official (api.openai.com)</option>
+                    <option value="openrouter">OpenRouter (openrouter.ai)</option>
+                    <option value="custom">Custom Proxy Base URL</option>
+                  </select>
+                </div>
+
+                <div className="md:col-span-3">
+                  <button
+                    onClick={() => handleRunVerification(apiKey, provider, customBaseUrl)}
+                    disabled={loading}
+                    className="w-full btn-emerald py-2.5 text-xs font-semibold flex items-center justify-center space-x-2"
+                  >
+                    <RefreshCw className={`w-3.5 h-3.5 ${loading ? 'animate-spin' : ''}`} />
+                    <span>{loading ? 'Probing Endpoints...' : 'Run Diagnostics'}</span>
+                  </button>
+                </div>
               </div>
 
-              <div className="md:col-span-3">
-                <button
-                  onClick={() => handleRunVerification(apiKey, provider, customBaseUrl)}
-                  disabled={loading}
-                  className="w-full keycap-btn keycap-btn-primary py-2 text-xs font-semibold flex items-center justify-center space-x-1.5"
-                >
-                  <RefreshCw className={`w-3.5 h-3.5 ${loading ? 'animate-spin' : ''}`} />
-                  <span>{loading ? 'Probing Endpoints...' : 'Run Diagnostics'}</span>
-                </button>
-              </div>
+              {provider === 'custom' && (
+                <div className="text-xs pt-1">
+                  <label className="block text-slate-400 text-xs font-medium mb-1.5">Custom Gateway Base URL</label>
+                  <input
+                    type="text"
+                    value={customBaseUrl}
+                    onChange={(e) => setCustomBaseUrl(e.target.value)}
+                    placeholder="https://your-proxy-domain/v1"
+                    className="w-full bg-[#070b13] border border-white/[0.1] rounded-xl px-3.5 py-2.5 text-xs font-mono text-white focus:outline-none focus:border-emerald-500/60"
+                  />
+                </div>
+              )}
             </div>
 
-            {provider === 'custom' && (
-              <div className="text-xs">
-                <label className="block text-muted text-[11px] mb-1">Custom Gateway Base URL</label>
-                <input
-                  type="text"
-                  value={customBaseUrl}
-                  onChange={(e) => setCustomBaseUrl(e.target.value)}
-                  placeholder="https://your-proxy-domain/v1"
-                  className="w-full bg-paper-well border border-rule rounded px-3 py-2 text-xs font-mono text-white"
-                />
-              </div>
-            )}
-          </div>
-
-          {/* Test Results */}
-          {testResult && (
-            <div className="space-y-4">
-              {/* Status Banner */}
-              <div
-                className={`p-4 rounded-lg border flex flex-col sm:flex-row sm:items-center justify-between gap-3 text-xs ${
-                  testResult.is_authenticated
-                    ? testResult.has_active_balance
-                      ? 'bg-emerald-950/40 border-emerald-800 text-emerald-200'
-                      : 'bg-amber-950/40 border-amber-800 text-amber-200'
-                    : 'bg-red-950/40 border-red-800 text-red-200'
-                }`}
-              >
-                <div className="flex items-center space-x-2.5">
-                  {testResult.is_authenticated ? (
-                    testResult.has_active_balance ? (
-                      <CheckCircle2 className="w-5 h-5 text-emerald-400 shrink-0" />
+            {/* Test Results */}
+            {testResult && (
+              <div className="space-y-4">
+                {/* Status Banner */}
+                <div
+                  className={`p-5 rounded-2xl border flex flex-col sm:flex-row sm:items-center justify-between gap-4 text-xs ${
+                    testResult.is_authenticated
+                      ? testResult.has_active_balance
+                        ? 'bg-emerald-500/10 border-emerald-500/30 text-emerald-200'
+                        : 'bg-amber-500/10 border-amber-500/30 text-amber-200'
+                      : 'bg-rose-500/10 border-rose-500/30 text-rose-200'
+                  }`}
+                >
+                  <div className="flex items-center space-x-3">
+                    {testResult.is_authenticated ? (
+                      testResult.has_active_balance ? (
+                        <CheckCircle2 className="w-6 h-6 text-emerald-400 shrink-0" />
+                      ) : (
+                        <AlertTriangle className="w-6 h-6 text-amber-400 shrink-0" />
+                      )
                     ) : (
-                      <AlertTriangle className="w-5 h-5 text-amber-400 shrink-0" />
-                    )
-                  ) : (
-                    <XCircle className="w-5 h-5 text-red-400 shrink-0" />
-                  )}
-                  <div>
-                    <span className="font-display font-bold text-sm block">
-                      {testResult.is_authenticated
-                        ? testResult.has_active_balance
-                          ? 'Authentication Successful & Account Ready'
-                          : 'Authenticated on Xingchi API (Insufficient Dedicated Balance)'
-                        : 'Authentication Failed Across Probed Endpoints'}
-                    </span>
-                    <span className="text-[11px] opacity-80 font-mono">
-                      Format: {testResult.key_analysis?.format_summary} ({testResult.key_analysis?.length} chars)
-                    </span>
+                      <XCircle className="w-6 h-6 text-rose-400 shrink-0" />
+                    )}
+                    <div>
+                      <span className="font-display font-bold text-base block text-white">
+                        {testResult.is_authenticated
+                          ? testResult.has_active_balance
+                            ? 'Authentication Verified — Gateway Ready'
+                            : 'Authenticated on Xingchi API (Zero Active Balance)'
+                          : 'Authentication Failed Across Probed Endpoints'}
+                      </span>
+                      <span className="text-[11px] opacity-80 font-mono text-slate-300">
+                        Format: {testResult.key_analysis?.format_summary} • Key Length: {testResult.key_analysis?.length} chars
+                      </span>
+                    </div>
+                  </div>
+
+                  <div className="font-mono text-xs text-right text-slate-400">
+                    <div>Probed: {testResult.tested_at || 'Just now'}</div>
+                    <div className="text-[10px] text-slate-500">Wire: /v1/responses</div>
                   </div>
                 </div>
 
-                <div className="text-right font-mono text-[11px]">
-                  Tested at: {testResult.tested_at}
+                {/* Endpoints Probed Cards */}
+                <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                  {testResult.test_results?.map((res, i) => (
+                    <div key={i} className="glass-panel p-4 rounded-xl border border-white/[0.08] space-y-2.5">
+                      <div className="flex items-center justify-between text-xs">
+                        <span className="font-display font-semibold text-white truncate max-w-[70%]">
+                          {res.target}
+                        </span>
+                        <span
+                          className={`font-mono text-[10px] px-2 py-0.5 rounded-full font-bold ${
+                            res.status === 200
+                              ? 'bg-emerald-500/10 text-emerald-300 border border-emerald-500/30'
+                              : 'bg-slate-800 text-slate-400 border border-white/[0.08]'
+                          }`}
+                        >
+                          HTTP {res.status}
+                        </span>
+                      </div>
+
+                      <p className="text-[11px] text-slate-400 line-clamp-2 leading-relaxed">
+                        {res.summary}
+                      </p>
+
+                      <div className="border-t border-white/[0.06] pt-2 flex items-center justify-between text-[10px] font-mono text-slate-400">
+                        <span>Latency: <strong className="text-slate-200">{res.latency_ms}ms</strong></span>
+                        <span>Auth: {res.authenticated || res.success ? '✅ OK' : '❌ 401'}</span>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+
+                {/* Recommendations */}
+                {testResult.recommendations?.length > 0 && (
+                  <div className="glass-well p-5 rounded-xl border border-white/[0.08] space-y-2 text-xs">
+                    <h4 className="font-display font-semibold text-white flex items-center space-x-2">
+                      <Sparkles className="w-4 h-4 text-emerald-400" />
+                      <span>Diagnostics Recommendations:</span>
+                    </h4>
+                    <ul className="space-y-1.5 text-slate-400 text-xs list-disc list-inside">
+                      {testResult.recommendations.map((rec, i) => (
+                        <li key={i} className="leading-relaxed">
+                          {rec}
+                        </li>
+                      ))}
+                    </ul>
+                  </div>
+                )}
+              </div>
+            )}
+          </motion.div>
+        )}
+
+        {activeSubTab === 'capabilities' && (
+          <motion.div
+            key="capabilities"
+            initial={{ opacity: 0, y: 6 }}
+            animate={{ opacity: 1, y: 0 }}
+            exit={{ opacity: 0, y: -6 }}
+            className="space-y-4"
+          >
+            <div className="glass-panel p-6 rounded-2xl space-y-5">
+              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-white/[0.08] pb-4">
+                <div>
+                  <h3 className="font-display font-semibold text-sm text-white">
+                    GPT-6 Astra & Sol Model Catalog on Xingchi Gateway
+                  </h3>
+                  <p className="text-[11px] text-slate-400 font-mono mt-0.5">
+                    Gateway: https://api.xingchiapi.com/v1 • Wire API: /v1/responses
+                  </p>
+                </div>
+
+                <div className="text-left sm:text-right">
+                  <span className="text-[10px] text-slate-500 block uppercase font-mono">Maximum Context Window</span>
+                  <span className="font-mono font-bold text-sm text-emerald-400 drop-shadow-[0_0_8px_rgba(52,211,153,0.4)]">
+                    1,050,000 Tokens (~4M Chars)
+                  </span>
                 </div>
               </div>
 
-              {/* Endpoints Probed Cards */}
-              <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
-                {testResult.test_results?.map((res, i) => (
-                  <div key={i} className="reg-card p-4 space-y-2 bg-paper-well">
+              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3.5">
+                {(capabilities?.models_on_gateway || [
+                  { id: 'gpt-6-astra', name: 'GPT-6 Astra', tier: 'Flagship 1.05M Context' },
+                  { id: 'gpt-6.1-sol', name: 'GPT-6.1 Sol', tier: 'High Efficiency Frontier Reasoning' },
+                  { id: 'gpt-6-sol', name: 'GPT-6 Sol', tier: 'Cost-Efficient Frontier' },
+                  { id: 'gpt-6.1-terra', name: 'GPT-6.1 Terra', tier: 'Specialized Multimodal' },
+                  { id: 'gpt-6-luna', name: 'GPT-6 Luna', tier: 'Ultra-Low Latency' },
+                  { id: 'gpt-5.6-sol', name: 'GPT-5.6 Sol', tier: 'High Reliability Code' },
+                ]).map((m) => (
+                  <div key={m.id} className="glass-well p-4 rounded-xl border border-white/[0.08] space-y-1.5 hover:border-emerald-500/30 transition-all">
                     <div className="flex items-center justify-between text-xs">
-                      <span className="font-display font-semibold text-white truncate max-w-[70%]">
-                        {res.target}
-                      </span>
-                      <span
-                        className={`font-mono text-[10px] px-1.5 py-0.2 rounded font-bold ${
-                          res.status === 200
-                            ? 'bg-emerald-950 text-emerald-300 border border-emerald-700'
-                            : 'bg-paper-3 text-muted border border-rule'
-                        }`}
-                      >
-                        HTTP {res.status}
+                      <span className="font-display font-semibold text-white">{m.name}</span>
+                      <span className="text-[10px] font-mono px-2 py-0.5 rounded-full bg-slate-800 text-emerald-300 border border-white/[0.08]">
+                        {m.id}
                       </span>
                     </div>
-
-                    <p className="text-[11px] text-muted line-clamp-2 leading-relaxed">
-                      {res.summary}
-                    </p>
-
-                    <div className="hairline-t pt-2 flex items-center justify-between text-[10px] font-mono text-muted">
-                      <span>Latency: {res.latency_ms}ms</span>
-                      <span>Auth: {res.authenticated || res.success ? '✅ OK' : '❌ 401'}</span>
-                    </div>
+                    <p className="text-[11px] text-slate-400">{m.tier}</p>
                   </div>
                 ))}
               </div>
 
-              {/* Recommendations */}
-              {testResult.recommendations?.length > 0 && (
-                <div className="bg-paper-3 p-4 rounded-lg border border-rule space-y-2 text-xs">
-                  <h4 className="font-display font-semibold text-white flex items-center space-x-1.5">
-                    <Sparkles className="w-4 h-4 text-emerald-400" />
-                    <span>Diagnostics Recommendations:</span>
-                  </h4>
-                  <ul className="space-y-1 text-muted text-[11px] list-disc list-inside">
-                    {testResult.recommendations.map((rec, i) => (
-                      <li key={i} className="leading-relaxed">
-                        {rec}
-                      </li>
-                    ))}
-                  </ul>
+              <div className="glass-well p-5 rounded-xl border border-white/[0.08] space-y-3 text-xs">
+                <h4 className="font-display font-semibold text-white">Multimodal & Computer-Use Capabilities:</h4>
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 text-xs text-slate-400">
+                  <div className="p-3 bg-black/30 rounded-lg border border-white/[0.05]">
+                    <strong className="text-white block mb-1">Inputs Supported:</strong>
+                    High-Resolution Multi-Page PDF documents, 2x DPI visual embeddings, text prompts, screen coordinate frames.
+                  </div>
+                  <div className="p-3 bg-black/30 rounded-lg border border-white/[0.05]">
+                    <strong className="text-white block mb-1">Outputs Supported:</strong>
+                    Strict JSON schema compliance, streaming natural text, mouse/keyboard OS actions (computer-use).
+                  </div>
                 </div>
+              </div>
+            </div>
+          </motion.div>
+        )}
+
+        {activeSubTab === 'playground' && (
+          <motion.div
+            key="playground"
+            initial={{ opacity: 0, y: 6 }}
+            animate={{ opacity: 1, y: 0 }}
+            exit={{ opacity: 0, y: -6 }}
+            className="space-y-4"
+          >
+            <div className="glass-panel p-6 rounded-2xl space-y-4">
+              <div className="flex items-center space-x-2 border-b border-white/[0.08] pb-3">
+                <Terminal className="w-4 h-4 text-emerald-400" />
+                <h3 className="font-display font-semibold text-sm text-white">Astra Frontier Reasoning Playground</h3>
+              </div>
+
+              <div className="space-y-2 text-xs">
+                <label className="block text-slate-400 text-xs font-medium">System Prompt / User Query:</label>
+                <textarea
+                  rows={3}
+                  value={userPrompt}
+                  onChange={(e) => setUserPrompt(e.target.value)}
+                  className="w-full bg-[#070b13] border border-white/[0.1] rounded-xl px-3.5 py-2.5 text-xs font-mono text-white focus:border-emerald-500/60 focus:outline-none"
+                />
+              </div>
+
+              <button
+                onClick={handleSimulateInference}
+                disabled={isSimulating}
+                className="btn-emerald px-5 py-2.5 text-xs font-semibold flex items-center space-x-2"
+              >
+                <Sparkles className={`w-3.5 h-3.5 ${isSimulating ? 'animate-spin' : ''}`} />
+                <span>{isSimulating ? 'Generating Reasoning Stream...' : 'Execute Astra Inference'}</span>
+              </button>
+
+              {playgroundOutput && (
+                <motion.div
+                  initial={{ opacity: 0 }}
+                  animate={{ opacity: 1 }}
+                  className="glass-well p-5 rounded-xl border border-white/[0.08] space-y-2 text-xs font-mono"
+                >
+                  <span className="text-[10px] text-slate-500 block uppercase tracking-wider">
+                    Model Output Stream (gpt-6-astra):
+                  </span>
+                  <pre className="text-slate-200 whitespace-pre-wrap leading-relaxed max-h-72 overflow-y-auto">
+                    {playgroundOutput}
+                  </pre>
+                </motion.div>
               )}
             </div>
-          )}
-        </div>
-      )}
-
-      {activeSubTab === 'capabilities' && (
-        <div className="space-y-4">
-          <div className="reg-card p-5 space-y-4">
-            <div className="flex items-center justify-between hairline-b pb-3">
-              <div>
-                <h3 className="font-display font-semibold text-sm text-white">
-                  GPT-6 Astra & Sol Model Catalog on Xingchi Gateway
-                </h3>
-                <p className="text-[11px] text-muted font-mono">
-                  Gateway: https://api.xingchiapi.com/v1 &bull; Wire API: /v1/responses
-                </p>
-              </div>
-
-              <div className="text-right">
-                <span className="text-[10px] text-muted block uppercase">Context Window</span>
-                <span className="font-mono font-bold text-sm text-emerald-400">1,050,000 Tokens (~4M Chars)</span>
-              </div>
-            </div>
-
-            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
-              {(capabilities?.models_on_gateway || [
-                { id: 'gpt-6-astra', name: 'GPT-6 Astra', tier: 'Flagship 1.05M Context' },
-                { id: 'gpt-6.1-sol', name: 'GPT-6.1 Sol', tier: 'High Efficiency Frontier Reasoning' },
-                { id: 'gpt-6-sol', name: 'GPT-6 Sol', tier: 'Cost-Efficient Frontier' },
-                { id: 'gpt-6.1-terra', name: 'GPT-6.1 Terra', tier: 'Specialized Multimodal' },
-                { id: 'gpt-6-luna', name: 'GPT-6 Luna', tier: 'Ultra-Low Latency' },
-                { id: 'gpt-5.6-sol', name: 'GPT-5.6 Sol', tier: 'High Reliability Code' },
-              ]).map((m) => (
-                <div key={m.id} className="bg-paper-well p-3.5 rounded-lg border border-rule space-y-1.5">
-                  <div className="flex items-center justify-between text-xs">
-                    <span className="font-display font-semibold text-white">{m.name}</span>
-                    <span className="text-[10px] font-mono px-1.5 py-0.2 rounded bg-paper-3 text-emerald-300 border border-rule">
-                      {m.id}
-                    </span>
-                  </div>
-                  <p className="text-[11px] text-muted">{m.tier}</p>
-                </div>
-              ))}
-            </div>
-
-            <div className="bg-paper-well p-4 rounded-lg border border-rule space-y-2 text-xs">
-              <h4 className="font-display font-semibold text-white">Multimodal & Computer-Use Capabilities:</h4>
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 text-[11px] text-muted">
-                <div>
-                  <strong className="text-ink-2 block mb-1">Inputs Supported:</strong>
-                  High-Resolution Multi-Page PDF documents, 2x DPI visual embeddings, text prompts, screen coordinate frames.
-                </div>
-                <div>
-                  <strong className="text-ink-2 block mb-1">Outputs Supported:</strong>
-                  Strict JSON schema compliance, streaming natural text, mouse/keyboard OS actions (computer-use).
-                </div>
-              </div>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {activeSubTab === 'playground' && (
-        <div className="space-y-4">
-          <div className="reg-card p-5 space-y-4">
-            <h3 className="font-display font-semibold text-sm text-white hairline-b pb-2 flex items-center space-x-2">
-              <Terminal className="w-4 h-4 text-emerald-400" />
-              <span>Astra Frontier Reasoning Playground</span>
-            </h3>
-
-            <div className="space-y-2 text-xs">
-              <label className="block text-muted text-[11px]">System Prompt / User Query:</label>
-              <textarea
-                rows={3}
-                value={userPrompt}
-                onChange={(e) => setUserPrompt(e.target.value)}
-                className="w-full bg-paper-well border border-rule rounded px-3 py-2 text-xs font-mono text-white focus:border-emerald-500 focus:outline-none"
-              />
-            </div>
-
-            <button
-              onClick={handleSimulateInference}
-              disabled={isSimulating}
-              className="keycap-btn keycap-btn-primary px-4 py-2 text-xs font-semibold flex items-center space-x-1.5"
-            >
-              <Sparkles className={`w-3.5 h-3.5 ${isSimulating ? 'animate-spin' : ''}`} />
-              <span>{isSimulating ? 'Generating Reasoning Stream...' : 'Execute Astra Inference'}</span>
-            </button>
-
-            {playgroundOutput && (
-              <div className="bg-paper-well p-4 rounded-lg border border-rule space-y-2 text-xs font-mono">
-                <span className="text-[10px] text-muted block uppercase tracking-wider">
-                  Model Output Stream (gpt-6-astra):
-                </span>
-                <pre className="text-ink-2 whitespace-pre-wrap leading-relaxed max-h-72 overflow-y-auto">
-                  {playgroundOutput}
-                </pre>
-              </div>
-            )}
-          </div>
-        </div>
-      )}
+          </motion.div>
+        )}
+      </AnimatePresence>
     </div>
   );
 }

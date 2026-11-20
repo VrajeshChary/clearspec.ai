@@ -1,4 +1,5 @@
 import React, { useState } from 'react';
+import { motion, AnimatePresence } from 'framer-motion';
 import Navbar from './components/Navbar';
 import ConsignmentAuditTab from './components/ConsignmentAuditTab';
 import CbamCalculatorTab from './components/CbamCalculatorTab';
@@ -19,8 +20,12 @@ export default function App() {
   };
 
   return (
-    <div className="min-h-screen bg-paper text-ink flex flex-col font-body selection:bg-emerald-600 selection:text-white">
-      {/* Top Hallmark Sticky Navigation Bar */}
+    <div className="min-h-screen bg-[#05080f] text-slate-100 flex flex-col font-sans selection:bg-emerald-500 selection:text-slate-950 relative overflow-hidden">
+      {/* Ambient Cyber Aura Gradients */}
+      <div className="fixed top-0 left-1/2 -translate-x-1/2 w-[1200px] h-[500px] bg-gradient-to-b from-emerald-500/10 via-teal-500/5 to-transparent blur-3xl pointer-events-none -z-10" />
+      <div className="fixed -bottom-40 -right-40 w-[600px] h-[600px] bg-cyan-500/5 blur-[120px] pointer-events-none -z-10" />
+
+      {/* Top Floating Glass Navigation Bar */}
       <Navbar
         activeTab={activeTab}
         setActiveTab={setActiveTab}
@@ -29,15 +34,25 @@ export default function App() {
         isVoiceActive={isVoiceOpen}
       />
 
-      {/* Main Responsive Cockpit Measure (Capped at 1536px, centered) */}
+      {/* Main Responsive Cockpit */}
       <main className="flex-1 w-full max-w-screen-2xl mx-auto px-4 sm:px-6 py-6 space-y-6">
-        {activeTab === 'consignment-audit' && (
-          <ConsignmentAuditTab key={demoTrigger} onAuditLoaded={(data) => setAuditResult(data)} />
-        )}
-        {activeTab === 'cbam-calculator' && <CbamCalculatorTab />}
-        {activeTab === 'mrl-lookup' && <MrlLookupTab />}
-        {activeTab === 'unit-normalizer' && <UnitNormalizerTab />}
-        {activeTab === 'gpt6-astra' && <Gpt6AstraTab />}
+        <AnimatePresence mode="wait">
+          <motion.div
+            key={activeTab + demoTrigger}
+            initial={{ opacity: 0, y: 8 }}
+            animate={{ opacity: 1, y: 0 }}
+            exit={{ opacity: 0, y: -8 }}
+            transition={{ duration: 0.25, ease: 'easeOut' }}
+          >
+            {activeTab === 'consignment-audit' && (
+              <ConsignmentAuditTab key={demoTrigger} onAuditLoaded={(data) => setAuditResult(data)} />
+            )}
+            {activeTab === 'cbam-calculator' && <CbamCalculatorTab />}
+            {activeTab === 'mrl-lookup' && <MrlLookupTab />}
+            {activeTab === 'unit-normalizer' && <UnitNormalizerTab />}
+            {activeTab === 'gpt6-astra' && <Gpt6AstraTab />}
+          </motion.div>
+        </AnimatePresence>
       </main>
 
       {/* Omnipresent Floating Gemini 3.8 Live Voice Assistant */}
@@ -47,25 +62,25 @@ export default function App() {
         onClose={() => setIsVoiceOpen(false)}
       />
 
-      {/* Hallmark Exact Footer: No invented metrics, real statutory citations */}
-      <footer className="hairline-t bg-paper-2 py-6 text-xs text-muted">
-        <div className="max-w-screen-2xl mx-auto px-4 sm:px-6 flex flex-col sm:flex-row items-center justify-between gap-3 text-center sm:text-left">
+      {/* Executive Glass Footer */}
+      <footer className="border-t border-white/[0.08] bg-slate-950/80 backdrop-blur-xl py-6 text-xs text-slate-400">
+        <div className="max-w-screen-2xl mx-auto px-4 sm:px-6 flex flex-col sm:flex-row items-center justify-between gap-4 text-center sm:text-left">
           <div className="space-y-1">
-            <p className="font-display font-semibold text-ink-2">
+            <p className="font-display font-bold text-slate-200 tracking-tight">
               ClearSpec AI &bull; Cross-Border Regulatory Enforcement Engine
             </p>
-            <p className="text-[11px] text-muted">
-              Statutory EU Regulations: Regulation (EU) 2023/956 (CBAM) &bull; Regulation (EC) 396/2005 (MRL) &bull; Regulation (EU) 2023/915 &bull; Customs Act 1962 § 111/112
+            <p className="text-[11px] text-slate-500 font-mono">
+              Statutory EU Frameworks: Regulation (EU) 2023/956 (CBAM) &bull; Regulation (EC) 396/2005 (MRL) &bull; Regulation (EU) 2023/915 &bull; Customs Act 1962 § 111/112
             </p>
           </div>
 
           <div className="flex items-center space-x-3 text-[11px] font-mono">
-            <span className="flex items-center space-x-1.5">
-              <span className="w-1.5 h-1.5 rounded-full bg-emerald-500" />
+            <span className="flex items-center space-x-1.5 px-2.5 py-1 rounded-full bg-emerald-500/10 border border-emerald-500/20 text-emerald-300">
+              <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse shadow-[0_0_8px_rgba(52,211,153,0.8)]" />
               <span>Gemini 3.8 Flash • Online</span>
             </span>
-            <span className="text-rule">&bull;</span>
-            <span className="text-emerald-400">Rotterdam Corridor Verified</span>
+            <span className="text-white/20">&bull;</span>
+            <span className="text-cyan-400 drop-shadow-[0_0_8px_rgba(6,182,212,0.4)]">Rotterdam Corridor Verified</span>
           </div>
         </div>
       </footer>

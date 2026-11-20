@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import {
   Database,
   Search,
@@ -11,7 +11,8 @@ import {
   ExternalLink,
   Zap,
   Layers,
-  FileText
+  FileText,
+  Sparkles
 } from 'lucide-react';
 import { normalizeHsCode, lookupChemicalMrl } from '../services/api';
 
@@ -31,6 +32,13 @@ const QUICK_LOOKUPS = [
     desc: 'Strict 0.01 mg/kg default MRL'
   },
   {
+    label: '🦐 Fipronil in Frozen Shrimp',
+    hs: '03061700',
+    cas: '120068-37-3',
+    alias: 'Fipronil',
+    desc: 'Marine aquaculture standard (0.005 mg/kg)'
+  },
+  {
     label: '🧄 Chlorpyrifos (Alias Fallback)',
     hs: '09042211',
     cas: '',
@@ -46,6 +54,11 @@ export default function MrlLookupTab() {
   const [lookupResult, setLookupResult] = useState(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState(null);
+
+  // Auto-run lookup on mount so the tab is never empty
+  useEffect(() => {
+    handleLookup();
+  }, []);
 
   const handleLookup = async (e) => {
     if (e) e.preventDefault();
@@ -75,32 +88,34 @@ export default function MrlLookupTab() {
   return (
     <div className="space-y-6">
       {/* Header */}
-      <div>
-        <div className="flex items-center space-x-2">
-          <h2 className="text-xl sm:text-2xl font-display font-bold text-white tracking-tight">
-            EU MRL & CAS Substance Intelligence Registry
-          </h2>
-          <span className="text-xs font-mono px-2 py-0.5 rounded bg-emerald-950/80 text-emerald-300 border border-emerald-800">
-            Reg (EC) 396/2005
-          </span>
+      <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
+        <div>
+          <div className="flex items-center space-x-2">
+            <h2 className="text-2xl sm:text-3xl font-display font-bold text-white tracking-tight">
+              EU MRL & CAS Substance Intelligence Registry
+            </h2>
+            <span className="text-xs font-mono px-2.5 py-0.5 rounded-full bg-emerald-500/10 text-emerald-300 border border-emerald-500/30">
+              Reg (EC) 396/2005
+            </span>
+          </div>
+          <p className="text-xs text-slate-400 mt-1">
+            Normalizes 8-digit Indian ITC-HS codes into 4-digit EU chapters and resolves active chemical substances using{' '}
+            <strong className="text-emerald-400">Tier 1 CAS Registry Numbers</strong> first, falling back to{' '}
+            <strong className="text-amber-300">Tier 2 Synonyms & Aliases</strong> against the official statutory SQLite database.
+          </p>
         </div>
-        <p className="text-xs text-muted mt-1">
-          Normalizes 8-digit Indian ITC-HS codes into 4-digit EU chapters and resolves active chemical substances using{' '}
-          <strong className="text-emerald-400">Tier 1 CAS Registry Numbers</strong> first, falling back to{' '}
-          <strong className="text-amber-300">Tier 2 Synonyms & Aliases</strong> against the official statutory SQLite database.
-        </p>
       </div>
 
       {/* Preset Buttons */}
-      <div className="reg-card p-3 bg-paper-2 flex flex-wrap items-center gap-2">
-        <span className="text-xs font-display font-semibold text-muted uppercase tracking-wider mr-1">
+      <div className="glass-panel p-3.5 flex flex-wrap items-center gap-2.5">
+        <span className="text-xs font-display font-bold text-slate-400 uppercase tracking-wider mr-1">
           Quick Lookups:
         </span>
         {QUICK_LOOKUPS.map((q, idx) => (
           <button
             key={idx}
             onClick={() => applyPreset(q)}
-            className="px-3 py-1.5 rounded-lg text-xs font-display bg-paper-well text-ink-2 hover:text-white border border-rule hover:border-emerald-500/50 transition-colors flex items-center space-x-1.5"
+            className="px-3.5 py-1.5 rounded-lg text-xs font-display bg-slate-900/60 text-slate-300 hover:text-white border border-white/10 hover:border-emerald-500/40 transition-all flex items-center space-x-1.5"
           >
             <span>{q.label}</span>
           </button>
@@ -111,14 +126,14 @@ export default function MrlLookupTab() {
       <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
         {/* Input Form (Cols 1-5) */}
         <div className="lg:col-span-5 space-y-4">
-          <form onSubmit={handleLookup} className="reg-card p-5 space-y-4">
-            <h3 className="font-display font-semibold text-sm text-white hairline-b pb-2 flex items-center space-x-2">
+          <form onSubmit={handleLookup} className="glass-panel p-6 space-y-4">
+            <h3 className="font-display font-bold text-sm text-white hairline-b pb-3 flex items-center space-x-2">
               <Search className="w-4 h-4 text-emerald-400" />
               <span>Query Substance & Commodity</span>
             </h3>
 
             <div>
-              <label className="block text-muted text-[11px] mb-1">
+              <label className="block text-slate-400 text-[11px] mb-1 font-mono">
                 Indian 8-Digit ITC-HS Code (e.g. 09042211 Crushed Chilli)
               </label>
               <input
@@ -126,16 +141,16 @@ export default function MrlLookupTab() {
                 value={hsInput}
                 onChange={(e) => setHsInput(e.target.value)}
                 placeholder="e.g. 09042211"
-                className="w-full bg-paper-well border border-rule rounded px-3 py-2 text-xs font-mono text-white focus:border-emerald-500 focus:outline-none"
+                className="w-full bg-slate-950/80 border border-white/10 rounded-lg px-3.5 py-2 text-xs font-mono text-white focus:border-emerald-500 focus:outline-none"
               />
-              <span className="text-[10px] text-muted mt-1 block">
+              <span className="text-[10px] text-slate-500 font-mono mt-1 block">
                 Normalized automatically to 4-digit EU chapter prefix (e.g. 0904)
               </span>
             </div>
 
             <div>
               <div className="flex items-center justify-between mb-1">
-                <label className="text-muted text-[11px]">Tier 1: CAS Registry Number</label>
+                <label className="text-slate-400 text-[11px] font-mono">Tier 1: CAS Registry Number</label>
                 <span className="text-[10px] text-emerald-400 font-mono">Priority Checksum</span>
               </div>
               <input
@@ -143,13 +158,13 @@ export default function MrlLookupTab() {
                 value={casInput}
                 onChange={(e) => setCasInput(e.target.value)}
                 placeholder="e.g. 75-21-8"
-                className="w-full bg-paper-well border border-rule rounded px-3 py-2 text-xs font-mono text-white focus:border-emerald-500 focus:outline-none"
+                className="w-full bg-slate-950/80 border border-white/10 rounded-lg px-3.5 py-2 text-xs font-mono text-white focus:border-emerald-500 focus:outline-none"
               />
             </div>
 
             <div>
               <div className="flex items-center justify-between mb-1">
-                <label className="text-muted text-[11px]">Tier 2: Chemical Alias / Trade Name Fallback</label>
+                <label className="text-slate-400 text-[11px] font-mono">Tier 2: Chemical Alias / Trade Name Fallback</label>
                 <span className="text-[10px] text-amber-300 font-mono">Synonym Match</span>
               </div>
               <input
@@ -157,16 +172,16 @@ export default function MrlLookupTab() {
                 value={aliasInput}
                 onChange={(e) => setAliasInput(e.target.value)}
                 placeholder="e.g. Ethylene oxide, dursban, tricyclazole"
-                className="w-full bg-paper-well border border-rule rounded px-3 py-2 text-xs font-mono text-white focus:border-emerald-500 focus:outline-none"
+                className="w-full bg-slate-950/80 border border-white/10 rounded-lg px-3.5 py-2 text-xs font-mono text-white focus:border-emerald-500 focus:outline-none"
               />
             </div>
 
             <button
               type="submit"
               disabled={loading}
-              className="w-full keycap-btn keycap-btn-primary py-2.5 text-xs font-semibold flex items-center justify-center space-x-1.5"
+              className="w-full btn-emerald py-3 text-xs font-bold flex items-center justify-center space-x-2 shadow-lg"
             >
-              <Zap className="w-3.5 h-3.5" />
+              <Zap className="w-4 h-4" />
               <span>{loading ? 'Querying Statutory DB...' : 'Query Maximum Residue Limit'}</span>
             </button>
           </form>
@@ -175,33 +190,33 @@ export default function MrlLookupTab() {
         {/* Results Console (Cols 6-12) */}
         <div className="lg:col-span-7 space-y-4">
           {error && (
-            <div className="reg-card p-4 bg-red-950/40 border-red-800 text-red-300 text-xs">
+            <div className="glass-panel p-4 bg-rose-950/40 border-rose-800 text-rose-300 text-xs">
               <strong>Lookup Error:</strong> {error}
             </div>
           )}
 
           {lookupResult ? (
-            <div className="reg-card p-5 space-y-4">
+            <div className="glass-panel p-6 space-y-5">
               {/* Header */}
-              <div className="flex items-center justify-between hairline-b pb-3">
-                <div className="flex items-center space-x-2.5">
-                  <div className="w-8 h-8 rounded-lg bg-emerald-500/20 border border-emerald-500/40 flex items-center justify-center text-emerald-400">
-                    <CheckCircle2 className="w-5 h-5" />
+              <div className="flex items-center justify-between hairline-b pb-4">
+                <div className="flex items-center space-x-3">
+                  <div className="w-10 h-10 rounded-xl bg-emerald-500/20 border border-emerald-500/40 flex items-center justify-center text-emerald-400 shadow-[0_0_15px_rgba(16,185,129,0.3)]">
+                    <CheckCircle2 className="w-6 h-6" />
                   </div>
                   <div>
-                    <h3 className="font-display font-semibold text-sm text-white">
-                      {lookupResult.chemical_name || 'Substance Found'}
+                    <h3 className="font-display font-bold text-lg text-white">
+                      {lookupResult.substance_name || lookupResult.chemical_name || 'Substance Found'}
                     </h3>
-                    <p className="text-[11px] text-muted font-mono">
-                      CAS: {lookupResult.cas_number || 'N/A'} &bull; Match Tier:{' '}
+                    <p className="text-xs text-slate-400 font-mono">
+                      CAS: <strong className="text-white">{lookupResult.cas_number || 'N/A'}</strong> &bull; Match Tier:{' '}
                       <strong className="text-emerald-400">{lookupResult.match_tier || 'Tier 1 (CAS)'}</strong>
                     </p>
                   </div>
                 </div>
 
                 <div className="text-right">
-                  <span className="text-[10px] text-muted block uppercase">Statutory EU MRL</span>
-                  <span className="font-mono font-bold text-lg text-emerald-400">
+                  <span className="text-[10px] text-slate-400 block uppercase font-mono">Statutory EU MRL</span>
+                  <span className="font-mono font-bold text-2xl text-emerald-400 drop-shadow-[0_0_10px_rgba(16,185,129,0.5)]">
                     {lookupResult.max_limit_mg_kg !== null ? `${lookupResult.max_limit_mg_kg} mg/kg` : '0.01 mg/kg (Default)'}
                   </span>
                 </div>
@@ -209,47 +224,47 @@ export default function MrlLookupTab() {
 
               {/* Metadata Cards */}
               <div className="grid grid-cols-2 gap-3 text-xs">
-                <div className="bg-paper-well p-3 rounded border border-rule">
-                  <span className="text-[10px] text-muted block">Normalized HS Code</span>
-                  <span className="font-mono font-bold text-white text-sm mt-0.5 block">
-                    {lookupResult.normalized_hs_prefix || hsInput.substring(0, 4)}
+                <div className="glass-well p-3.5 space-y-1">
+                  <span className="text-[10px] text-slate-400 block font-mono">Normalized HS Code</span>
+                  <span className="font-mono font-bold text-white text-base block">
+                    {lookupResult.commodity_hs4 || lookupResult.normalized_hs_prefix || hsInput.substring(0, 4)}
                   </span>
-                  <span className="text-[10px] text-muted">
-                    Chapter: {lookupResult.commodity_description || 'Edible Spices / Grains'}
+                  <span className="text-[11px] text-slate-400">
+                    {lookupResult.commodity_name || lookupResult.commodity_description || 'Spices & Agricultural Products'}
                   </span>
                 </div>
 
-                <div className="bg-paper-well p-3 rounded border border-rule">
-                  <span className="text-[10px] text-muted block">Legal Framework</span>
-                  <span className="font-mono font-bold text-emerald-400 text-xs mt-0.5 block">
+                <div className="glass-well p-3.5 space-y-1">
+                  <span className="text-[10px] text-slate-400 block font-mono">Legal Citation & Framework</span>
+                  <span className="font-mono font-bold text-emerald-400 text-xs block leading-snug">
                     {lookupResult.regulation_reference || 'Regulation (EC) 396/2005'}
                   </span>
-                  <span className="text-[10px] text-muted">European Union Statutory Limit</span>
+                  <span className="text-[10px] text-slate-500 font-mono">European Union Statutory Ceiling</span>
                 </div>
               </div>
 
               {/* Regulatory Guidance */}
-              <div className="bg-paper-3 p-3.5 rounded-lg border border-rule text-xs space-y-1.5">
-                <div className="flex items-center space-x-1.5 text-white font-semibold">
-                  <Info className="w-3.5 h-3.5 text-emerald-400" />
+              <div className="glass-well p-4 rounded-xl border border-white/10 text-xs space-y-2">
+                <div className="flex items-center space-x-2 text-white font-semibold">
+                  <Info className="w-4 h-4 text-emerald-400" />
                   <span>Enforcement Guidance for Exporters:</span>
                 </div>
-                <p className="text-[11px] text-muted leading-relaxed">
+                <p className="text-xs text-slate-300 leading-relaxed font-mono">
                   Laboratory analytical instruments used for pre-shipment inspection must achieve an accredited Limit of Quantification (LOQ) equal to or lower than{' '}
-                  <strong className="text-emerald-400">{lookupResult.max_limit_mg_kg || 0.01} mg/kg</strong>. Any report stating "BLQ" with an LOQ higher than this threshold constitutes an immediate non-compliance trap under EU border inspection regulations.
+                  <strong className="text-emerald-400 font-bold">{lookupResult.max_limit_mg_kg || 0.01} mg/kg</strong>. Any report stating "BLQ" with an LOQ higher than this threshold constitutes an immediate non-compliance trap under EU border inspection regulations.
                 </p>
               </div>
             </div>
           ) : (
-            <div className="reg-card p-12 flex flex-col items-center justify-center text-center space-y-3 bg-paper-well border-dashed">
-              <Database className="w-10 h-10 text-muted" />
-              <h4 className="font-display font-semibold text-white">No Substance Queried Yet</h4>
-              <p className="text-xs text-muted max-w-sm">
+            <div className="glass-panel p-12 flex flex-col items-center justify-center text-center space-y-3 border-dashed">
+              <Database className="w-10 h-10 text-slate-500" />
+              <h4 className="font-display font-bold text-white">No Substance Queried Yet</h4>
+              <p className="text-xs text-slate-400 max-w-sm">
                 Select a quick lookup preset above or enter an Indian HS code and CAS number to view statutory EU limits.
               </p>
               <button
                 onClick={() => handleLookup()}
-                className="keycap-btn keycap-btn-primary px-4 py-2 text-xs font-semibold"
+                className="btn-emerald px-5 py-2.5 text-xs"
               >
                 Run Default Substance Lookup
               </button>
