@@ -20,6 +20,7 @@ class VisualCardResponse(BaseModel):
     note: Optional[str] = None
 
 @router.post("/generate", response_model=VisualCardResponse)
+@router.post("/generate/", response_model=VisualCardResponse)
 async def generate_defect_card(payload: VisualCardRequest):
     """
     Generates a 16:9 WhatsApp-ready Visual Fix Card summarizing export non-compliance defects:

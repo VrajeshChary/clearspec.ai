@@ -78,6 +78,7 @@ RESPONSE GUIDELINES:
     return prompt
 
 @router.post("/ask-text", response_model=AskTextResponse)
+@router.post("/ask-text/", response_model=AskTextResponse)
 async def ask_text_fallback(payload: AskTextRequest):
     """
     Lightweight text Q&A endpoint using gemini-3.8-flash:

@@ -1,6 +1,6 @@
 import os
 from pathlib import Path
-from fastapi import FastAPI, HTTPException
+from fastapi import FastAPI, HTTPException, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 from fastapi.responses import FileResponse
@@ -20,7 +20,18 @@ app = FastAPI(
     title=settings.project_name,
     version="1.0.0",
     description="ClearSpec AI - Cross-Border Export Regulatory Compliance, Unit Normalization, EU MRL, CBAM 2026 Engine & Multi-PDF Consignment Auditor",
+    redirect_slashes=False,
 )
+
+@app.middleware("http")
+async def vercel_http_middleware(request: Request, call_next):
+    # Ensure original path from Vercel edge proxy is respected
+    matched_path = request.headers.get("x-matched-path") or request.headers.get("x-forwarded-uri")
+    if matched_path:
+        clean = matched_path.split("?")[0]
+        if clean and not clean.endswith(".py"):
+            request.scope["path"] = clean
+    return await call_next(request)
 
 app.add_middleware(
     CORSMiddleware,
@@ -46,6 +57,18 @@ app.include_router(gpt6_astra.router, prefix=settings.api_v1_str)
 @app.get("/api/v1/health")
 def health_check():
     return {"status": "healthy"}
+
+@app.api_route("/api/v1/debug-status", methods=["GET", "POST"])
+@app.api_route("/api/debug-status", methods=["GET", "POST"])
+def debug_status(request: Request):
+    return {
+        "status": "ok",
+        "url": str(request.url),
+        "path": request.url.path,
+        "method": request.method,
+        "headers": dict(request.headers),
+        "scope_path": request.scope.get("path"),
+    }
 
 @app.get("/astra")
 def serve_astra_tester():

@@ -70,6 +70,7 @@ class ConsignmentAuditResponse(BaseModel):
     extraction_source: Optional[str] = Field("LIVE: gemini-3.8-flash", description="Extraction backend model or source engine")
 
 @router.post("", response_model=ConsignmentAuditResponse)
+@router.post("/", response_model=ConsignmentAuditResponse)
 async def audit_consignment(
     request: Request,
     files: Optional[List[UploadFile]] = File(None),
@@ -440,6 +441,7 @@ class ReVerifyResponse(BaseModel):
     updated_financial_risk_inr: float
 
 @router.post("/re-verify", response_model=ReVerifyResponse)
+@router.post("/re-verify/", response_model=ReVerifyResponse)
 async def reverify_analyte(payload: ReVerifyRequest):
     """
     Re-evaluates an analyte reading verified by a human clerk (e.g. 300% Zoom modal).

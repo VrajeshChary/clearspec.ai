@@ -13,6 +13,7 @@ from ..services.unit_normalizer import (
 router = APIRouter(prefix="/units", tags=["Unit Normalizer"])
 
 @router.post("/normalize", response_model=NormalizeUnitResponse)
+@router.post("/normalize/", response_model=NormalizeUnitResponse)
 def normalize_unit(payload: NormalizeUnitRequest):
     try:
         canonical_val = normalize_unit_to_mg_kg(payload.value, payload.source_unit)
@@ -26,6 +27,7 @@ def normalize_unit(payload: NormalizeUnitRequest):
         raise HTTPException(status_code=400, detail=f"Failed to normalize unit: {str(e)}")
 
 @router.post("/evaluate-lab-report", response_model=EvaluateLabReportResponse)
+@router.post("/evaluate-lab-report/", response_model=EvaluateLabReportResponse)
 def evaluate_lab_report(payload: EvaluateLabReportRequest):
     try:
         return evaluate_blq_mrl_trap(
