@@ -1,4 +1,6 @@
 import os
+import io
+import re
 import json
 import base64
 import asyncio
@@ -7,6 +9,7 @@ from typing import Optional, Dict, Any, List
 from fastapi import APIRouter, WebSocket, WebSocketDisconnect, HTTPException
 from pydantic import BaseModel, Field
 from dotenv import load_dotenv
+from gtts import gTTS
 
 ROOT_DIR = Path(__file__).resolve().parent.parent.parent.parent
 load_dotenv(ROOT_DIR / ".env")
@@ -23,6 +26,27 @@ class AskTextResponse(BaseModel):
     answer: str
     model_used: str
     language: str
+    audio_base64: Optional[str] = None
+
+def text_to_speech_base64(text: str, lang: str = "en") -> Optional[str]:
+    """
+    Synthesize high-fidelity native audio using gTTS and return base64-encoded MP3.
+    Ensures zero reliance on client browser TTS engines for Telugu or English.
+    """
+    try:
+        # Strip markdown syntax and excessive formatting
+        clean = re.sub(r'[*_#`~>\[\]\(\)]', ' ', text)
+        clean = re.sub(r'\s+', ' ', clean).strip()
+        if not clean:
+            return None
+        buf = io.BytesIO()
+        tts = gTTS(text=clean, lang=lang, slow=False)
+        tts.write_to_fp(buf)
+        buf.seek(0)
+        return base64.b64encode(buf.read()).decode("utf-8")
+    except Exception as e:
+        print(f"TTS generation error: {e}")
+        return None
 
 def build_system_prompt(audit_context: Optional[Dict[str, Any]] = None, language: str = "en") -> str:
     ctx = audit_context or {}
@@ -58,9 +82,13 @@ async def ask_text_fallback(payload: AskTextRequest):
     """
     Lightweight text Q&A endpoint using gemini-3.8-flash:
     Serves as an instant, stage-safe fallback if the microphone is muted or the venue is noisy.
+    Returns pre-synthesized native MP3 audio in audio_base64 to eliminate client-side TTS issues.
     """
     sys_prompt = build_system_prompt(payload.audit_context, payload.language or "en")
-    full_prompt = f"{sys_prompt}\n\nUSER QUESTION: {payload.question}\nANSWER:"
+    is_te_query = "తెలుగు" in payload.question or payload.language == "te" or bool(re.search(r'[\u0C00-\u0C7F]', payload.question))
+
+    ans = None
+    model_name = "gemini-3.8-flash"
 
     if GEMINI_API_KEY:
         try:
@@ -87,46 +115,52 @@ async def ask_text_fallback(payload: AskTextRequest):
                         config=config,
                     )
                     if res and res.text:
-                        return AskTextResponse(
-                            answer=res.text.strip(),
-                            model_used=m_candidate,
-                            language=payload.language or "en"
-                        )
+                        ans = res.text.strip()
+                        model_name = m_candidate
+                        break
                 except Exception:
                     continue
         except Exception:
             pass
 
-    # Deterministic stage-safe response if offline
-    q_lower = payload.question.lower()
-    is_te = "తెలుగు" in payload.question or payload.language == "te"
+    # Deterministic stage-safe response if offline or not answered
+    if not ans:
+        q_lower = payload.question.lower()
+        if is_te_query:
+            ans = (
+                "కన్సైన్‌మెంట్ బ్యాచ్ GNT-24A ముఖ్యంగా మూడు కారణాల వల్ల నిలిపివేయబడింది: "
+                "1) ఇన్‌వాయిస్ మరియు ప్యాకింగ్ లిస్ట్ మధ్య 450 కిలోల బరువు వ్యత్యాసం ఉంది. "
+                "2) ట్రైసైక్లాజోల్ ల్యాబ్ LOQ (0.05 mg/kg) చట్టబద్ధమైన EU MRL (0.01 mg/kg) కంటే ఎక్కువగా ఉండటం వల్ల BLQ సెన్సిటివిటీ ట్రాప్ నమోదైంది. "
+                "3) అఫ్లాటాక్సిన్ B1 పరిమితి మించి (8.5 ug/kg > 5.0 ug/kg) ఉంది. మొత్తం ఆర్థిక నష్ట భయం ₹52.46 లక్షలు."
+            )
+        elif "weight" in q_lower:
+            ans = "The shipment has a 450 kg net weight discrepancy: Commercial Invoice declares 18,500 kg while the Packing List confirms only 18,050 kg, triggering a customs misdeclaration penalty of ₹3.5 Lakhs under Section 111/112."
+        elif "tricyclazole" in q_lower or "trap" in q_lower or "blq" in q_lower:
+            ans = "Tricyclazole was reported as BLQ, but the testing laboratory instrument had an LOQ of 0.05 mg/kg, which is 5 times higher than the strict EU MRL of 0.01 mg/kg. The machine was not sensitive enough to prove compliance."
+        elif "risk" in q_lower or "cost" in q_lower or "financial" in q_lower:
+            ans = "The total estimated financial exposure is ₹52,46,000 INR, consisting of Rotterdam demurrage (€2,100), mandatory NABL/EIC re-testing (₹45,000), customs misdeclaration penalty (₹3.5 Lakhs), and cargo rejection liability (₹46.62 Lakhs)."
+        else:
+            ans = (
+                "Consignment Batch GNT-24A is under a critical export hold due to three violations: "
+                "a 450 kg weight shortage between the invoice and packing list, "
+                "a BLQ sensitivity trap on Tricyclazole where lab LOQ (0.05 mg/kg) exceeds the EU MRL (0.01 mg/kg), "
+                "and Aflatoxin B1 contamination at 8.5 ug/kg exceeding the 5.0 ug/kg statutory ceiling. "
+                "Total prevented financial risk is ₹52.46 Lakhs."
+            )
+        model_name = "deterministic-stage-engine"
 
-    if is_te:
-        ans = (
-            "కన్సైన్‌మెంట్ బ్యాచ్ GNT-24A ముఖ్యంగా మూడు కారణాల వల్ల నిలిపివేయబడింది: "
-            "1) ఇన్‌వాయిస్ మరియు ప్యాకింగ్ లిస్ట్ మధ్య 450 కిలోల బరువు వ్యత్యాసం ఉంది. "
-            "2) ట్రైసైక్లాజోల్ ల్యాబ్ LOQ (0.05 mg/kg) చట్టబద్ధమైన EU MRL (0.01 mg/kg) కంటే ఎక్కువగా ఉండటం వల్ల BLQ సెన్సిటివిటీ ట్రాప్ నమోదైంది. "
-            "3) అఫ్లాటాక్సిన్ B1 పరిమితి మించి (8.5 ug/kg > 5.0 ug/kg) ఉంది. మొత్తం ఆర్థిక నష్ట భయం ₹52.46 లక్షలు."
-        )
-    elif "weight" in q_lower:
-        ans = "The shipment has a 450 kg net weight discrepancy: Commercial Invoice declares 18,500 kg while the Packing List confirms only 18,050 kg, triggering a customs misdeclaration penalty of ₹3.5 Lakhs under Section 111/112."
-    elif "tricyclazole" in q_lower or "trap" in q_lower or "blq" in q_lower:
-        ans = "Tricyclazole was reported as BLQ, but the testing laboratory instrument had an LOQ of 0.05 mg/kg, which is 5 times higher than the strict EU MRL of 0.01 mg/kg. The machine was not sensitive enough to prove compliance."
-    elif "risk" in q_lower or "cost" in q_lower or "financial" in q_lower:
-        ans = "The total estimated financial exposure is ₹52,46,000 INR, consisting of Rotterdam demurrage (€2,100), mandatory NABL/EIC re-testing (₹45,000), customs misdeclaration penalty (₹3.5 Lakhs), and cargo rejection liability (₹46.62 Lakhs)."
-    else:
-        ans = (
-            "Consignment Batch GNT-24A is under a critical export hold due to three violations: "
-            "a 450 kg weight shortage between the invoice and packing list, "
-            "a BLQ sensitivity trap on Tricyclazole where lab LOQ (0.05 mg/kg) exceeds the EU MRL (0.01 mg/kg), "
-            "and Aflatoxin B1 contamination at 8.5 ug/kg exceeding the 5.0 ug/kg statutory ceiling. "
-            "Total prevented financial risk is ₹52.46 Lakhs."
-        )
+    # Detect if answer is Telugu
+    is_te = is_te_query or bool(re.search(r'[\u0C00-\u0C7F]', ans))
+    tts_lang = "te" if is_te else "en"
+
+    # Synthesize native speech asynchronously
+    audio_b64 = await asyncio.to_thread(text_to_speech_base64, ans, tts_lang)
 
     return AskTextResponse(
         answer=ans,
-        model_used="deterministic-stage-engine",
-        language="te" if is_te else "en"
+        model_used=model_name,
+        language="te" if is_te else "en",
+        audio_base64=audio_b64
     )
 
 @router.websocket("/voice")

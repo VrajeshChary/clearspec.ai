@@ -39,6 +39,8 @@ export default function LiveVoiceWidget({ auditResult, isOpen, onClose }) {
   const [isThinking, setIsThinking] = useState(false);
   const [isMuted, setIsMuted] = useState(false);
 
+  const isMutedRef = useRef(false);
+  const audioPlayerRef = useRef(null);
   const wsRef = useRef(null);
   const audioContextRef = useRef(null);
   const playbackContextRef = useRef(null);
@@ -55,8 +57,56 @@ export default function LiveVoiceWidget({ auditResult, isOpen, onClose }) {
   useEffect(() => {
     return () => {
       stopRecording();
+      if ('speechSynthesis' in window) {
+        window.speechSynthesis.cancel();
+      }
+      if (audioPlayerRef.current) {
+        audioPlayerRef.current.pause();
+        audioPlayerRef.current = null;
+      }
     };
   }, []);
+
+  const toggleMute = () => {
+    const nextMuted = !isMuted;
+    setIsMuted(nextMuted);
+    isMutedRef.current = nextMuted;
+
+    if (nextMuted) {
+      // 1. Immediately cancel any active browser speech synthesis
+      if ('speechSynthesis' in window) {
+        window.speechSynthesis.cancel();
+      }
+      // 2. Immediately stop, pause, and discard any active HTML5 audio playback
+      if (audioPlayerRef.current) {
+        audioPlayerRef.current.pause();
+        audioPlayerRef.current.currentTime = 0;
+        audioPlayerRef.current = null;
+      }
+      // 3. Suspend Web Audio context if currently processing stream
+      if (playbackContextRef.current && playbackContextRef.current.state === 'running') {
+        try { playbackContextRef.current.suspend(); } catch (_) {}
+      }
+      nextPlayTimeRef.current = 0;
+    } else {
+      if (playbackContextRef.current && playbackContextRef.current.state === 'suspended') {
+        try { playbackContextRef.current.resume(); } catch (_) {}
+      }
+    }
+  };
+
+  const handleClose = () => {
+    if ('speechSynthesis' in window) {
+      window.speechSynthesis.cancel();
+    }
+    if (audioPlayerRef.current) {
+      audioPlayerRef.current.pause();
+      audioPlayerRef.current.currentTime = 0;
+      audioPlayerRef.current = null;
+    }
+    stopRecording();
+    onClose();
+  };
 
   const connectWebSocket = () => {
     return new Promise((resolve, reject) => {
@@ -87,17 +137,22 @@ export default function LiveVoiceWidget({ auditResult, isOpen, onClose }) {
               ...prev,
               { speaker: msg.speaker, text: msg.text, time: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) },
             ]);
-            if (msg.speaker === 'model' && !isMuted && 'speechSynthesis' in window && !msg.hasAudio) {
+            if (msg.speaker === 'model' && !isMutedRef.current && 'speechSynthesis' in window && !msg.hasAudio) {
               const u = new SpeechSynthesisUtterance(msg.text);
               u.rate = 1.05;
               window.speechSynthesis.speak(u);
             }
-          } else if (msg.type === 'audio' && !isMuted) {
+          } else if (msg.type === 'audio' && !isMutedRef.current) {
             playAudioChunk(msg.data);
           } else if (msg.type === 'interrupted') {
             nextPlayTimeRef.current = 0;
             if ('speechSynthesis' in window) {
               window.speechSynthesis.cancel();
+            }
+            if (audioPlayerRef.current) {
+              audioPlayerRef.current.pause();
+              audioPlayerRef.current.currentTime = 0;
+              audioPlayerRef.current = null;
             }
           }
         } catch (e) {
@@ -118,6 +173,7 @@ export default function LiveVoiceWidget({ auditResult, isOpen, onClose }) {
   };
 
   const playAudioChunk = (base64Pcm) => {
+    if (isMutedRef.current) return;
     try {
       if (!playbackContextRef.current) {
         playbackContextRef.current = new (window.AudioContext || window.webkitAudioContext)({ sampleRate: 24000 });
@@ -240,7 +296,15 @@ export default function LiveVoiceWidget({ auditResult, isOpen, onClose }) {
           model: data.model_used
         },
       ]);
-      if (!isMuted && 'speechSynthesis' in window) {
+      if (!isMutedRef.current && data.audio_base64) {
+        if (audioPlayerRef.current) {
+          audioPlayerRef.current.pause();
+          audioPlayerRef.current.currentTime = 0;
+        }
+        const audio = new Audio(`data:audio/mp3;base64,${data.audio_base64}`);
+        audioPlayerRef.current = audio;
+        audio.play().catch((e) => console.warn('Audio play error:', e));
+      } else if (!isMutedRef.current && 'speechSynthesis' in window) {
         const u = new SpeechSynthesisUtterance(data.answer);
         u.rate = 1.05;
         window.speechSynthesis.speak(u);
@@ -288,14 +352,14 @@ export default function LiveVoiceWidget({ auditResult, isOpen, onClose }) {
 
           <div className="flex items-center space-x-1">
             <button
-              onClick={() => setIsMuted(!isMuted)}
+              onClick={toggleMute}
               title={isMuted ? 'Unmute Audio' : 'Mute Audio'}
               className="p-1.5 rounded-lg text-slate-400 hover:text-white hover:bg-white/[0.05] transition-colors"
             >
               {isMuted ? <VolumeX className="w-4 h-4 text-amber-400" /> : <Volume2 className="w-4 h-4" />}
             </button>
             <button
-              onClick={onClose}
+              onClick={handleClose}
               className="p-1.5 rounded-lg text-slate-400 hover:text-white hover:bg-white/[0.05] transition-colors"
             >
               <X className="w-4 h-4" />

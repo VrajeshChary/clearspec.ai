@@ -1,0 +1,17 @@
+services:
+  - type: web
+    name: clearspec-ai
+    runtime: docker
+    plan: free
+    region: oregon
+    dockerfilePath: ./Dockerfile
+    healthCheckPath: /health
+    envVars:
+      - key: PORT
+        value: "8080"
+      - key: CONFIDENCE_THRESHOLD
+        value: "0.85"
+      - key: ENVIRONMENT
+        value: production
+      - key: GEMINI_API_KEY
+        sync: false
