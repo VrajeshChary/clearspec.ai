@@ -1,4 +1,4 @@
-import React, { useState, useRef, useCallback, useEffect } from 'react';
+import React, { useState, useRef, useCallback, useEffect, useMemo } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import {
   ShieldX,
@@ -10,6 +10,7 @@ import {
   FileText,
   Upload,
   ChevronRight,
+  ChevronLeft,
   Loader2,
   ZoomIn,
   ZoomOut,
@@ -95,6 +96,10 @@ function ForensicDocViewer({
   findings,
   pulsedFinding,
   renderedPages = {},
+  documentPages = {},
+  currentPage = 0,
+  totalPages = 1,
+  onPageChange,
   zoomLevel,
   isScanning,
   onOpenZoomModal
@@ -103,7 +108,11 @@ function ForensicDocViewer({
   const [hoveredBox, setHoveredBox] = useState(null);
   const imgRef = useRef(null);
 
-  const pageUrl = renderedPages[filename] || `/api/v1/sample-pdf/${encodeURIComponent(filename)}/page/0.png`;
+  const docPages = documentPages[filename] || [];
+  let pageUrl = docPages[currentPage]
+    || renderedPages[`${filename}::page_${currentPage}`]
+    || (currentPage === 0 ? renderedPages[filename] : null)
+    || `/api/v1/sample-pdf/${encodeURIComponent(filename)}/page/${currentPage}.png`;
 
   const onLoad = () => {
     if (imgRef.current) {
@@ -113,13 +122,61 @@ function ForensicDocViewer({
 
   const docFindings = findings.filter((f) => {
     const docFile = f.document_filename || ANALYTE_DOC_MAP[f.name];
-    return docFile === filename && f.bounding_box;
+    const isDocMatch = docFile === filename || (!f.document_filename && filename && filename.toLowerCase().includes('lab'));
+    const findingPage = f.page_number !== undefined ? f.page_number : 0;
+    return isDocMatch && f.bounding_box && (totalPages <= 1 || findingPage === currentPage);
   });
 
   return (
-    <div className="relative overflow-hidden rounded-xl border border-white/10 bg-[#050811] p-3 flex items-center justify-center min-h-[580px] shadow-[inset_0_2px_12px_rgba(0,0,0,0.8)]">
+    <div className="relative overflow-hidden rounded-xl border border-white/10 bg-[#050811] p-3 flex flex-col items-center justify-center min-h-[580px] shadow-[inset_0_2px_12px_rgba(0,0,0,0.8)]">
       {/* Laser Scanning Line Animation */}
       {isScanning && <div className="laser-scanner-line" />}
+
+      {/* Multi-Page Navigation Bar */}
+      {totalPages > 1 && (
+        <div className="w-full flex items-center justify-between bg-slate-900/90 border border-white/15 px-3 py-2 rounded-lg text-xs font-mono mb-3 shrink-0 shadow-lg">
+          <div className="flex items-center space-x-2">
+            <span className="text-slate-400 text-[11px]">DOCUMENT PAGE:</span>
+            <button
+              onClick={() => onPageChange && onPageChange(Math.max(0, currentPage - 1))}
+              disabled={currentPage === 0}
+              className="px-2.5 py-1 rounded bg-white/5 hover:bg-white/15 disabled:opacity-30 disabled:cursor-not-allowed text-white flex items-center space-x-1 border border-white/10 transition-colors"
+              title="Previous Page"
+            >
+              <ChevronLeft className="w-3.5 h-3.5" />
+              <span>Prev</span>
+            </button>
+            <span className="font-bold text-emerald-400 px-2 py-0.5 rounded bg-emerald-500/10 border border-emerald-500/30">
+              Page {currentPage + 1} of {totalPages}
+            </span>
+            <button
+              onClick={() => onPageChange && onPageChange(Math.min(totalPages - 1, currentPage + 1))}
+              disabled={currentPage >= totalPages - 1}
+              className="px-2.5 py-1 rounded bg-white/5 hover:bg-white/15 disabled:opacity-30 disabled:cursor-not-allowed text-white flex items-center space-x-1 border border-white/10 transition-colors"
+              title="Next Page"
+            >
+              <span>Next</span>
+              <ChevronRight className="w-3.5 h-3.5" />
+            </button>
+          </div>
+
+          <div className="flex items-center space-x-1">
+            {Array.from({ length: Math.min(totalPages, 8) }).map((_, idx) => (
+              <button
+                key={idx}
+                onClick={() => onPageChange && onPageChange(idx)}
+                className={`px-2 py-0.5 rounded text-xs font-bold transition-all ${
+                  currentPage === idx
+                    ? 'bg-emerald-500 text-white shadow-[0_0_10px_rgba(16,185,129,0.5)]'
+                    : 'bg-white/5 text-slate-400 hover:text-white hover:bg-white/10 border border-white/5'
+                }`}
+              >
+                Page {idx + 1}
+              </button>
+            ))}
+          </div>
+        </div>
+      )}
 
       <div
         className="relative inline-block transition-transform duration-200 origin-top"
@@ -128,7 +185,7 @@ function ForensicDocViewer({
         <img
           ref={imgRef}
           src={pageUrl}
-          alt={filename}
+          alt={`${filename} - Page ${currentPage + 1}`}
           onLoad={onLoad}
           className="max-w-full rounded-lg border border-white/15 shadow-2xl block select-none"
         />
@@ -208,7 +265,7 @@ function ForensicDocViewer({
 // ─────────────────────────────────────────────────────────────────────────────
 // 300% Forensic Stamp Loupe & Clerk Verification Modal
 // ─────────────────────────────────────────────────────────────────────────────
-function ZoomReverifyModal({ finding, onClose, onConfirm, renderedPages }) {
+function ZoomReverifyModal({ finding, onClose, onConfirm, renderedPages, documentPages, activeDocs, selectedDoc }) {
   const [confirmedVal, setConfirmedVal] = useState('0.008');
   const [submitting, setSubmitting] = useState(false);
 
@@ -221,7 +278,15 @@ function ZoomReverifyModal({ finding, onClose, onConfirm, renderedPages }) {
   };
 
   const isFail = parseFloat(confirmedVal) > (finding?.eu_mrl_mg_kg || 0.01);
-  const pageUrl = renderedPages['NABL_Lab_Report_104.pdf'] || '/api/v1/sample-pdf/NABL_Lab_Report_104.pdf/page/0.png';
+  const targetDoc = finding?.document_filename
+    || activeDocs?.find((d) => d.type === 'lab')?.key
+    || selectedDoc
+    || 'NABL_Lab_Report_104.pdf';
+
+  const pageUrl = (documentPages && documentPages[targetDoc]?.[0])
+    || renderedPages[targetDoc]
+    || renderedPages['NABL_Lab_Report_104.pdf']
+    || `/api/v1/sample-pdf/${encodeURIComponent(targetDoc)}/page/0.png`;
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 backdrop-blur-md">
@@ -550,6 +615,7 @@ export default function ConsignmentAuditTab({ onAuditLoaded }) {
   const [isScanning, setIsScanning] = useState(false);
   const [error, setError] = useState(null);
   const [selectedDoc, setSelectedDoc] = useState('NABL_Lab_Report_104.pdf');
+  const [currentPage, setCurrentPage] = useState(0);
   const [pulsedFinding, setPulsedFinding] = useState(null);
   const [zoomFinding, setZoomFinding] = useState(null);
   const [zoomLevel, setZoomLevel] = useState(1);
@@ -560,6 +626,66 @@ export default function ConsignmentAuditTab({ onAuditLoaded }) {
     packing: null,
     lab: null,
   });
+
+  const activeDocs = useMemo(() => {
+    if (auditResult?.document_names && auditResult.document_names.length > 0) {
+      return auditResult.document_names.map((docName, idx) => {
+        const lower = docName.toLowerCase();
+        let label = docName;
+        let type = 'other';
+
+        if (lower.includes('invoice') || lower.includes('inv')) {
+          label = 'Commercial Invoice';
+          type = 'invoice';
+        } else if (lower.includes('pack') || lower.includes('pl')) {
+          label = 'Packing List';
+          type = 'packing';
+        } else if (lower.includes('lab') || lower.includes('report') || lower.includes('coa') || lower.includes('cert')) {
+          label = 'Lab Certificate';
+          type = 'lab';
+        } else {
+          if (idx === 0) label = 'Commercial Invoice';
+          else if (idx === 1) label = 'Packing List';
+          else if (idx === 2) label = 'Lab Certificate';
+        }
+
+        const pages = auditResult.document_pages?.[docName] || [];
+        const pageCount = pages.length || (auditResult.rendered_pages?.[docName] ? 1 : 0);
+
+        return {
+          key: docName,
+          label: `${label} (${docName})`,
+          shortLabel: label,
+          filename: docName,
+          badge: `${pageCount} ${pageCount === 1 ? 'Page' : 'Pages'}`,
+          type,
+          pageCount,
+        };
+      });
+    }
+
+    return SAMPLE_DOCS;
+  }, [auditResult]);
+
+  const currentDocPages = useMemo(() => {
+    if (!auditResult) return [];
+    if (auditResult.document_pages?.[selectedDoc]) {
+      return auditResult.document_pages[selectedDoc];
+    }
+    const pages = [];
+    let p = 0;
+    while (auditResult.rendered_pages?.[`${selectedDoc}::page_${p}`]) {
+      pages.push(auditResult.rendered_pages[`${selectedDoc}::page_${p}`]);
+      p++;
+    }
+    if (pages.length > 0) return pages;
+    if (auditResult.rendered_pages?.[selectedDoc]) {
+      return [auditResult.rendered_pages[selectedDoc]];
+    }
+    return [];
+  }, [auditResult, selectedDoc]);
+
+  const totalPages = Math.max(1, currentDocPages.length);
 
   const executeAudit = useCallback(async (payload, isForm = false) => {
     setLoading(true);
@@ -572,10 +698,15 @@ export default function ConsignmentAuditTab({ onAuditLoaded }) {
 
       const available = data.document_names || Object.keys(data.rendered_pages || {});
       const labDoc =
-        available.find((d) => d.toLowerCase().includes('lab') || d.toLowerCase().includes('cert')) ||
+        available.find((d) => {
+          const l = d.toLowerCase();
+          return l.includes('lab') || l.includes('cert') || l.includes('coa') || l.includes('report');
+        }) ||
+        available[available.length - 1] ||
         available[0] ||
         'NABL_Lab_Report_104.pdf';
       setSelectedDoc(labDoc);
+      setCurrentPage(0);
     } catch (e) {
       setError(e.message);
     } finally {
@@ -609,8 +740,13 @@ export default function ConsignmentAuditTab({ onAuditLoaded }) {
 
   const handleFindingSelect = (finding) => {
     setPulsedFinding(finding);
-    const targetDoc = finding.document_filename || ANALYTE_DOC_MAP[finding.name] || 'NABL_Lab_Report_104.pdf';
+    let targetDoc = finding.document_filename;
+    if (!targetDoc) {
+      const labDoc = activeDocs.find((d) => d.type === 'lab');
+      targetDoc = labDoc ? labDoc.key : activeDocs[activeDocs.length - 1]?.key || 'NABL_Lab_Report_104.pdf';
+    }
     setSelectedDoc(targetDoc);
+    setCurrentPage(finding.page_number !== undefined ? finding.page_number : 0);
     setTimeout(() => setPulsedFinding(null), 3000);
   };
 
@@ -955,7 +1091,7 @@ export default function ConsignmentAuditTab({ onAuditLoaded }) {
             </div>
 
             <h2 className="text-2xl sm:text-3xl font-display font-bold text-white tracking-tight flex items-center space-x-2">
-              <span>Indian Dried Red Chilli &rarr; European Union (Port of Entry)</span>
+              <span>{auditResult.commodity_description ? `${auditResult.commodity_description} → European Union (Port of Entry)` : 'Consignment Compliance Audit → European Union (Port of Entry)'}</span>
             </h2>
 
             <p className="text-xs text-slate-400 flex flex-wrap items-center gap-3">
@@ -973,18 +1109,24 @@ export default function ConsignmentAuditTab({ onAuditLoaded }) {
 
           {/* Quick Alert Badges */}
           <div className="flex flex-wrap lg:flex-col items-start lg:items-end gap-2 shrink-0 text-xs font-mono">
-            <div className="badge-critical px-3 py-1.5 rounded-lg flex items-center space-x-2">
-              <AlertOctagon className="w-4 h-4 text-rose-400 shrink-0" />
-              <span>450 kg Net Weight Shortfall (Sec 111/112 Penalty)</span>
-            </div>
-            <div className="badge-warning px-3 py-1.5 rounded-lg flex items-center space-x-2">
-              <AlertTriangle className="w-4 h-4 text-amber-400 shrink-0" />
-              <span>BLQ Sensitivity Trap: Tricyclazole LOQ 0.05 &gt; MRL 0.01</span>
-            </div>
-            <div className="badge-warning px-3 py-1.5 rounded-lg flex items-center space-x-2">
-              <ZoomIn className="w-4 h-4 text-amber-400 shrink-0" />
-              <span>Chlorpyrifos QA Rubber Stamp Occlusion (Pending Clerk)</span>
-            </div>
+            {weight && weight.discrepancy_kg > 0 ? (
+              <div className="badge-critical px-3 py-1.5 rounded-lg flex items-center space-x-2">
+                <AlertOctagon className="w-4 h-4 text-rose-400 shrink-0" />
+                <span>{weight.discrepancy_kg} kg Net Weight Shortfall (Sec 111/112 Penalty)</span>
+              </div>
+            ) : null}
+            {findings.some((f) => f.blq_trap_triggered) ? (
+              <div className="badge-warning px-3 py-1.5 rounded-lg flex items-center space-x-2">
+                <AlertTriangle className="w-4 h-4 text-amber-400 shrink-0" />
+                <span>BLQ Sensitivity Trap: {findings.find((f) => f.blq_trap_triggered)?.name || 'Analyte'} LOQ &gt; MRL</span>
+              </div>
+            ) : null}
+            {findings.some((f) => f.needs_human_review || f.name === 'Chlorpyrifos') ? (
+              <div className="badge-warning px-3 py-1.5 rounded-lg flex items-center space-x-2">
+                <ZoomIn className="w-4 h-4 text-amber-400 shrink-0" />
+                <span>{findings.find((f) => f.needs_human_review)?.name || 'Chlorpyrifos'} Rubber Stamp Occlusion (Pending Clerk)</span>
+              </div>
+            ) : null}
           </div>
         </div>
       </div>
@@ -997,12 +1139,15 @@ export default function ConsignmentAuditTab({ onAuditLoaded }) {
             {/* Document Selector & Zoom Toolbar */}
             <div className="flex flex-wrap items-center justify-between gap-2 hairline-b pb-3">
               <div className="flex items-center space-x-1.5 overflow-x-auto">
-                {SAMPLE_DOCS.map((doc) => {
+                {activeDocs.map((doc) => {
                   const isSelected = selectedDoc === doc.key;
                   return (
                     <button
                       key={doc.key}
-                      onClick={() => setSelectedDoc(doc.key)}
+                      onClick={() => {
+                        setSelectedDoc(doc.key);
+                        setCurrentPage(0);
+                      }}
                       className={`px-3 py-1.5 rounded-lg text-xs font-display flex items-center space-x-1.5 transition-all whitespace-nowrap ${
                         isSelected
                           ? 'bg-gradient-to-r from-emerald-600 to-emerald-500 text-white font-bold shadow-[0_0_12px_rgba(16,185,129,0.4)]'
@@ -1011,6 +1156,11 @@ export default function ConsignmentAuditTab({ onAuditLoaded }) {
                     >
                       <FileText className="w-3.5 h-3.5" />
                       <span>{doc.label}</span>
+                      {doc.badge && (
+                        <span className="text-[10px] opacity-75 font-mono ml-1 px-1.5 py-0.2 rounded bg-black/30">
+                          {doc.badge}
+                        </span>
+                      )}
                     </button>
                   );
                 })}
@@ -1051,6 +1201,10 @@ export default function ConsignmentAuditTab({ onAuditLoaded }) {
               findings={findings}
               pulsedFinding={pulsedFinding}
               renderedPages={auditResult?.rendered_pages || {}}
+              documentPages={auditResult?.document_pages || {}}
+              currentPage={currentPage}
+              totalPages={totalPages}
+              onPageChange={setCurrentPage}
               zoomLevel={zoomLevel}
               isScanning={isScanning || loading}
               onOpenZoomModal={(f) => setZoomFinding(f)}
@@ -1152,7 +1306,7 @@ export default function ConsignmentAuditTab({ onAuditLoaded }) {
                 <div className="glass-well p-2.5 text-center border border-rose-500/40">
                   <span className="text-[10px] text-rose-300 block font-mono">Variance Deficit</span>
                   <span className="font-mono font-bold text-sm text-rose-400 mt-1 block">
-                    {weight.discrepancy_kg} kg (-2.43%)
+                    {weight.discrepancy_kg} kg ({weight.invoice_net_weight_kg ? ((-weight.discrepancy_kg / weight.invoice_net_weight_kg) * 100).toFixed(2) : '-2.43'}%)
                   </span>
                 </div>
               </div>
@@ -1274,6 +1428,9 @@ export default function ConsignmentAuditTab({ onAuditLoaded }) {
             onClose={() => setZoomFinding(null)}
             onConfirm={handleConfirmReverify}
             renderedPages={auditResult?.rendered_pages || {}}
+            documentPages={auditResult?.document_pages || {}}
+            activeDocs={activeDocs}
+            selectedDoc={selectedDoc}
           />
         )}
       </AnimatePresence>

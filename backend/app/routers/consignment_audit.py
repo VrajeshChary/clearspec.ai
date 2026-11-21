@@ -66,6 +66,7 @@ class ConsignmentAuditResponse(BaseModel):
     financial_risk: FinancialRiskBreakdown
     bilingual_supplier_notice: BilingualWarningNotice
     rendered_pages: Dict[str, str] = Field(default_factory=dict, description="Map of filename to base64 PNG data URL")
+    document_pages: Dict[str, List[str]] = Field(default_factory=dict, description="Map of filename to array of base64 PNG data URLs for every page")
     document_names: List[str] = Field(default_factory=list, description="List of document filenames analyzed")
     extraction_source: Optional[str] = Field("LIVE: gemini-3.8-flash", description="Extraction backend model or source engine")
 
@@ -101,20 +102,21 @@ async def audit_consignment(
 
     documents_data: List[Dict[str, Any]] = []
     rendered_pages: Dict[str, str] = {}
+    document_pages: Dict[str, List[str]] = {}
 
-    def _render_pdf_first_page_base64(pdf_bytes: bytes) -> Optional[str]:
-        """Convert page 1 of a PDF into a 2x DPI PNG base64 data URL."""
+    def _render_pdf_all_pages_base64(pdf_bytes: bytes, max_pages: int = 15) -> List[str]:
+        """Convert all pages of a PDF into 2x DPI PNG base64 data URLs."""
+        pages = []
         try:
             doc = fitz.open(stream=pdf_bytes, filetype="pdf")
-            if len(doc) > 0:
-                pix = doc[0].get_pixmap(matrix=fitz.Matrix(2, 2), alpha=False)
+            for page_idx in range(min(len(doc), max_pages)):
+                pix = doc[page_idx].get_pixmap(matrix=fitz.Matrix(2, 2), alpha=False)
                 b64 = base64.b64encode(pix.tobytes("png")).decode("utf-8")
-                doc.close()
-                return f"data:image/png;base64,{b64}"
+                pages.append(f"data:image/png;base64,{b64}")
             doc.close()
-        except Exception:
-            pass
-        return None
+        except Exception as e:
+            print(f"PDF rendering error: {e}")
+        return pages
 
     # 1. Handle sample packet
     if is_sample or (not files and SAMPLE_PACKET_DIR.exists()):
@@ -124,18 +126,29 @@ async def audit_consignment(
             if s_path.exists():
                 with open(s_path, "rb") as f:
                     content = f.read()
-                data_url = _render_pdf_first_page_base64(content)
-                if data_url:
-                    rendered_pages[s_name] = data_url
+                pages = _render_pdf_all_pages_base64(content)
+                if pages:
+                    rendered_pages[s_name] = pages[0]
+                    document_pages[s_name] = pages
+                    for p_idx, p_data in enumerate(pages):
+                        rendered_pages[f"{s_name}::page_{p_idx}"] = p_data
                 data = extract_document_data(content, s_name)
+                data["_filename"] = s_name
+                data["_page_count"] = len(pages)
                 documents_data.append(data)
     elif files:
         for f in files:
             content = await f.read()
-            data_url = _render_pdf_first_page_base64(content)
-            if data_url:
-                rendered_pages[f.filename] = data_url
-            data = extract_document_data(content, f.filename, mime_type=f.content_type or "application/pdf")
+            clean_name = f.filename.split("/")[-1].split("\\")[-1]
+            pages = _render_pdf_all_pages_base64(content)
+            if pages:
+                rendered_pages[clean_name] = pages[0]
+                document_pages[clean_name] = pages
+                for p_idx, p_data in enumerate(pages):
+                    rendered_pages[f"{clean_name}::page_{p_idx}"] = p_data
+            data = extract_document_data(content, clean_name, mime_type=f.content_type or "application/pdf")
+            data["_filename"] = clean_name
+            data["_page_count"] = len(pages)
             documents_data.append(data)
     else:
         raise HTTPException(status_code=400, detail="No files uploaded and sample packet not requested.")
@@ -418,7 +431,8 @@ ACTION REQUIRED: Do not release export consignment batch {batch_num} until revis
             telugu_notice=telugu_notice
         ),
         rendered_pages=rendered_pages,
-        document_names=list(rendered_pages.keys()),
+        document_pages=document_pages,
+        document_names=list(document_pages.keys()) if document_pages else list(rendered_pages.keys()),
         extraction_source=next((d.get("_source") for d in documents_data if d.get("_source")), "LIVE: gemini-3.8-flash"),
     )
 
