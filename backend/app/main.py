@@ -25,6 +25,7 @@ app = FastAPI(
 app.add_middleware(
     CORSMiddleware,
     allow_origins=settings.cors_origins,
+    allow_origin_regex=r"https://.*\.vercel\.app|https://.*\.railway\.app|https://.*\.onrender\.com|https://.*\.run\.app|http://localhost:.*|http://127\.0\.0\.1:.*",
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
@@ -41,6 +42,8 @@ app.include_router(live_voice.router, prefix=settings.api_v1_str)
 app.include_router(gpt6_astra.router, prefix=settings.api_v1_str)
 
 @app.get("/health")
+@app.get("/api/health")
+@app.get("/api/v1/health")
 def health_check():
     return {"status": "healthy"}
 
