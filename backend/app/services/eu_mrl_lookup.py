@@ -2,7 +2,7 @@ import re
 import sqlite3
 from typing import Optional, Dict, Any, Tuple
 from ..schemas.eu_mrl_lookup import HsNormalizeResponse, ChemicalLookupResponse
-from .statutory_db import DB_PATH, init_statutory_database
+from .statutory_db import get_db_connection, init_statutory_database
 
 CAS_REGEX = re.compile(r"^\d{2,7}-\d{2}-\d$")
 
@@ -75,7 +75,7 @@ def lookup_chemical_mrl(
     max_limit = None
     reg_ref = None
 
-    conn = sqlite3.connect(DB_PATH)
+    conn = get_db_connection()
     conn.row_factory = sqlite3.Row
     cursor = conn.cursor()
 

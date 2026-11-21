@@ -2,7 +2,22 @@ import sqlite3
 from pathlib import Path
 from typing import Dict, Any, List, Optional
 
-DB_PATH = Path(__file__).resolve().parent.parent.parent / "data" / "statutory_rules.db"
+DEFAULT_DB_PATH = Path(__file__).resolve().parent.parent.parent / "data" / "statutory_rules.db"
+
+def get_db_connection() -> sqlite3.Connection:
+    """Returns a resilient SQLite connection, falling back to /tmp on serverless environments like Vercel."""
+    target_path = DEFAULT_DB_PATH
+    try:
+        target_path.parent.mkdir(parents=True, exist_ok=True)
+        # Test writeability
+        test_file = target_path.parent / ".write_test"
+        test_file.touch()
+        test_file.unlink(missing_ok=True)
+    except Exception:
+        target_path = Path("/tmp") / "statutory_rules.db"
+
+    conn = sqlite3.connect(target_path)
+    return conn
 
 SEED_RULES = [
     # Spices (0904 - Chilli & Pepper, 0910 - Ginger, Turmeric)
@@ -91,8 +106,7 @@ SEED_ALIASES = [
 
 def init_statutory_database():
     """Initializes and seeds the real SQLite statutory database."""
-    DB_PATH.parent.mkdir(parents=True, exist_ok=True)
-    conn = sqlite3.connect(DB_PATH)
+    conn = get_db_connection()
     cursor = conn.cursor()
 
     cursor.execute("""
