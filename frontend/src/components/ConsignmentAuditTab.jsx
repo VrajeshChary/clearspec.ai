@@ -629,24 +629,34 @@ export default function ConsignmentAuditTab({ onAuditLoaded }) {
 
   const activeDocs = useMemo(() => {
     if (auditResult?.document_names && auditResult.document_names.length > 0) {
-      return auditResult.document_names.map((docName, idx) => {
+      const typeOrder = { lab: 0, invoice: 1, packing: 2, other: 3 };
+
+      const mapped = auditResult.document_names.map((docName, idx) => {
         const lower = docName.toLowerCase();
-        let label = docName;
+        let label = 'Document';
         let type = 'other';
 
-        if (lower.includes('invoice') || lower.includes('inv')) {
+        if (lower.includes('lab') || lower.includes('report') || lower.includes('coa') || lower.includes('cert') || lower.includes('nabl')) {
+          label = 'NABL Lab Certificate';
+          type = 'lab';
+        } else if (lower.includes('invoice') || lower.includes('inv') || lower.includes('bill')) {
           label = 'Commercial Invoice';
           type = 'invoice';
-        } else if (lower.includes('pack') || lower.includes('pl')) {
+        } else if (lower.includes('pack') || lower.includes('pl') || lower.includes('pkg')) {
           label = 'Packing List';
           type = 'packing';
-        } else if (lower.includes('lab') || lower.includes('report') || lower.includes('coa') || lower.includes('cert')) {
-          label = 'Lab Certificate';
-          type = 'lab';
         } else {
-          if (idx === 0) label = 'Commercial Invoice';
-          else if (idx === 1) label = 'Packing List';
-          else if (idx === 2) label = 'Lab Certificate';
+          // If 1_, 2_, 3_ prefix or slot index
+          if (lower.startsWith('3_') || idx === 2) {
+            label = 'NABL Lab Certificate';
+            type = 'lab';
+          } else if (lower.startsWith('1_') || idx === 0) {
+            label = 'Commercial Invoice';
+            type = 'invoice';
+          } else if (lower.startsWith('2_') || idx === 1) {
+            label = 'Packing List';
+            type = 'packing';
+          }
         }
 
         const pages = auditResult.document_pages?.[docName] || [];
@@ -654,14 +664,15 @@ export default function ConsignmentAuditTab({ onAuditLoaded }) {
 
         return {
           key: docName,
-          label: `${label} (${docName})`,
-          shortLabel: label,
+          label,
           filename: docName,
-          badge: `${pageCount} ${pageCount === 1 ? 'Page' : 'Pages'}`,
           type,
           pageCount,
         };
       });
+
+      // Stable order: NABL Lab Certificate first, Commercial Invoice second, Packing List third
+      return mapped.sort((a, b) => (typeOrder[a.type] ?? 99) - (typeOrder[b.type] ?? 99));
     }
 
     return SAMPLE_DOCS;
@@ -1148,19 +1159,15 @@ export default function ConsignmentAuditTab({ onAuditLoaded }) {
                         setSelectedDoc(doc.key);
                         setCurrentPage(0);
                       }}
-                      className={`px-3 py-1.5 rounded-lg text-xs font-display flex items-center space-x-1.5 transition-all whitespace-nowrap ${
+                      title={doc.filename}
+                      className={`px-3.5 py-2 rounded-lg text-xs font-display flex items-center space-x-2 transition-all whitespace-nowrap ${
                         isSelected
                           ? 'bg-gradient-to-r from-emerald-600 to-emerald-500 text-white font-bold shadow-[0_0_12px_rgba(16,185,129,0.4)]'
-                          : 'text-slate-400 hover:text-white bg-slate-900/60 border border-white/10'
+                          : 'text-slate-300 hover:text-white bg-slate-900/60 border border-white/10 hover:border-white/20'
                       }`}
                     >
                       <FileText className="w-3.5 h-3.5" />
                       <span>{doc.label}</span>
-                      {doc.badge && (
-                        <span className="text-[10px] opacity-75 font-mono ml-1 px-1.5 py-0.2 rounded bg-black/30">
-                          {doc.badge}
-                        </span>
-                      )}
                     </button>
                   );
                 })}
