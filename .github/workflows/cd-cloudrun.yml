@@ -21,7 +21,7 @@ on:
           - staging
 
 env:
-  PROJECT_ID: ${{ secrets.GCP_PROJECT_ID || 'clearspec-ai' }}
+  PROJECT_ID: ${{ secrets.GCP_PROJECT_ID || 'gen-lang-client-0865058774' }}
   REGION: ${{ vars.GCP_REGION || 'asia-south1' }}
   SERVICE_NAME: clearspec-ai
 
@@ -29,7 +29,6 @@ jobs:
   deploy:
     name: Build & Deploy to Google Cloud Run
     runs-on: ubuntu-latest
-    if: ${{ secrets.GCP_SA_KEY != '' || secrets.GCP_WORKLOAD_IDENTITY_PROVIDER != '' }}
 
     permissions:
       contents: 'read'
@@ -39,39 +38,54 @@ jobs:
       - name: Checkout Repository
         uses: actions/checkout@v4
 
+      - name: Check GCP Credentials Configuration
+        id: check-secrets
+        run: |
+          if [ -z "${{ secrets.GCP_SA_KEY }}" ] && [ -z "${{ secrets.GCP_WORKLOAD_IDENTITY_PROVIDER }}" ]; then
+            echo "configured=false" >> $GITHUB_OUTPUT
+            echo "ℹ️ Notice: GCP credentials (GCP_SA_KEY or GCP_WORKLOAD_IDENTITY_PROVIDER) are not configured in GitHub Secrets."
+            echo "ℹ️ Skipping automated GitHub Actions Cloud Run deploy. Active service is deployed via gcloud CLI."
+          else
+            echo "configured=true" >> $GITHUB_OUTPUT
+          fi
+
       - name: Authenticate to Google Cloud (Service Account Key)
-        if: ${{ secrets.GCP_SA_KEY != '' }}
+        if: steps.check-secrets.outputs.configured == 'true' && secrets.GCP_SA_KEY != ''
         uses: google-github-actions/auth@v2
         with:
           credentials_json: ${{ secrets.GCP_SA_KEY }}
 
       - name: Authenticate to Google Cloud (Workload Identity Federation)
-        if: ${{ secrets.GCP_WORKLOAD_IDENTITY_PROVIDER != '' }}
+        if: steps.check-secrets.outputs.configured == 'true' && secrets.GCP_WORKLOAD_IDENTITY_PROVIDER != ''
         uses: google-github-actions/auth@v2
         with:
           workload_identity_provider: ${{ secrets.GCP_WORKLOAD_IDENTITY_PROVIDER }}
           service_account: ${{ secrets.GCP_SERVICE_ACCOUNT }}
 
       - name: Set up Google Cloud SDK
+        if: steps.check-secrets.outputs.configured == 'true'
         uses: google-github-actions/setup-gcloud@v2
 
       - name: Authorize Docker Push to Google Artifact Registry
+        if: steps.check-secrets.outputs.configured == 'true'
         run: |
           gcloud auth configure-docker ${{ env.REGION }}-docker.pkg.dev --quiet
 
       - name: Deploy directly to Cloud Run
+        if: steps.check-secrets.outputs.configured == 'true'
         id: deploy
         uses: google-github-actions/deploy-cloudrun@v2
         with:
           service: ${{ env.SERVICE_NAME }}
           region: ${{ env.REGION }}
           source: '.'
-          flags: '--allow-unauthenticated --memory=1Gi --timeout=300s'
+          flags: '--allow-unauthenticated --memory=2Gi --cpu=2 --timeout=300s'
           env_vars: |
             CONFIDENCE_THRESHOLD=0.85
             GEMINI_API_KEY=${{ secrets.GEMINI_API_KEY }}
 
       - name: Verify Live Service Healthcheck
+        if: steps.check-secrets.outputs.configured == 'true'
         run: |
           echo "Deployed successfully to: ${{ steps.deploy.outputs.url }}"
           curl -f "${{ steps.deploy.outputs.url }}/health"
