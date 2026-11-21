@@ -68,6 +68,7 @@ class ConsignmentAuditResponse(BaseModel):
     rendered_pages: Dict[str, str] = Field(default_factory=dict, description="Map of filename to base64 PNG data URL")
     document_pages: Dict[str, List[str]] = Field(default_factory=dict, description="Map of filename to array of base64 PNG data URLs for every page")
     document_names: List[str] = Field(default_factory=list, description="List of document filenames analyzed")
+    commodity_description: Optional[str] = Field(None, description="Extracted trade description of commodity")
     extraction_source: Optional[str] = Field("LIVE: gemini-3.8-flash", description="Extraction backend model or source engine")
 
 @router.post("", response_model=ConsignmentAuditResponse)
@@ -75,7 +76,8 @@ class ConsignmentAuditResponse(BaseModel):
 async def audit_consignment(
     request: Request,
     files: Optional[List[UploadFile]] = File(None),
-    use_sample: Optional[bool] = None
+    use_sample: Optional[bool] = None,
+    is_sample: Optional[bool] = None,
 ):
     """
     Audits a multi-document consignment packet (Commercial Invoice, Packing List, NABL Lab Certificate):
@@ -86,17 +88,17 @@ async def audit_consignment(
     5. Calculates financial risk exposure in INR (₹).
     6. Generates an actionable bilingual English + Telugu supplier warning notice.
     """
-    # Detect use_sample from query, JSON body, or form
-    is_sample = False
-    if use_sample is True:
-        is_sample = True
+    # Detect sample request from query param (use_sample or is_sample), JSON body, or form
+    effective_sample = False
+    if use_sample is True or is_sample is True:
+        effective_sample = True
     else:
         content_type = request.headers.get("content-type", "")
         if "application/json" in content_type:
             try:
                 body = await request.json()
-                if isinstance(body, dict) and body.get("use_sample"):
-                    is_sample = True
+                if isinstance(body, dict) and (body.get("use_sample") or body.get("is_sample")):
+                    effective_sample = True
             except Exception:
                 pass
 
@@ -119,7 +121,7 @@ async def audit_consignment(
         return pages
 
     # 1. Handle sample packet
-    if is_sample or (not files and SAMPLE_PACKET_DIR.exists()):
+    if effective_sample or (not files and SAMPLE_PACKET_DIR.exists()):
         sample_files = ["Commercial_Invoice_104.pdf", "Packing_List_104.pdf", "NABL_Lab_Report_104.pdf"]
         for s_name in sample_files:
             s_path = SAMPLE_PACKET_DIR / s_name
@@ -156,26 +158,55 @@ async def audit_consignment(
     if not documents_data:
         raise HTTPException(status_code=400, detail="Failed to parse documents from packet.")
 
-    # 2. Aggregation & Cross-Document Check
-    invoice_doc = next((d for d in documents_data if d.get("document_type") == "COMMERCIAL_INVOICE"), None)
-    packing_doc = next((d for d in documents_data if d.get("document_type") == "PACKING_LIST"), None)
-    lab_doc = next((d for d in documents_data if d.get("document_type") in ("LAB_REPORT", "CERTIFICATE_OF_ANALYSIS", "LABORATORY_REPORT")), None)
+    # 2. Intelligent Document Pairing & Cross-Document Check
+    def is_inv(d):
+        t = str(d.get("document_type", "")).upper()
+        fn = str(d.get("_filename", "")).lower()
+        txt = str(d.get("_text", "")).lower()
+        return "INVOICE" in t or "inv" in fn or "bill" in fn or "commercial invoice" in txt
 
-    # If lab_doc not found by type, find the first doc with chemical_rows or analytes
-    if not lab_doc:
-        lab_doc = next((d for d in documents_data if d.get("chemical_rows") or d.get("analytes")), None)
+    def is_pack(d):
+        t = str(d.get("document_type", "")).upper()
+        fn = str(d.get("_filename", "")).lower()
+        txt = str(d.get("_text", "")).lower()
+        return "PACK" in t or "pack" in fn or "pl" in fn or "pkg" in fn or "packing list" in txt
 
-    # Fallback to first documents if not typed explicitly
-    if not invoice_doc and len(documents_data) > 0:
-        invoice_doc = documents_data[0]
-    if not packing_doc and len(documents_data) > 1:
-        packing_doc = documents_data[1]
+    def is_lab(d):
+        t = str(d.get("document_type", "")).upper()
+        fn = str(d.get("_filename", "")).lower()
+        txt = str(d.get("_text", "")).lower()
+        return (
+            "LAB" in t or "CERT" in t or "COA" in t or
+            "lab" in fn or "test" in fn or "cert" in fn or "coa" in fn or "analysis" in fn or
+            bool(d.get("chemical_rows") or d.get("analytes")) or
+            "certificate of analysis" in txt or "test report" in txt
+        )
+
+    invoice_doc = next((d for d in documents_data if is_inv(d)), None)
+    packing_doc = next((d for d in documents_data if is_pack(d) and d != invoice_doc), None)
+    lab_doc = next((d for d in documents_data if is_lab(d) and d not in (invoice_doc, packing_doc)), None)
+
+    # Fallbacks for unmatched documents
+    unmatched = [d for d in documents_data if d not in (invoice_doc, packing_doc, lab_doc)]
+    if not invoice_doc and unmatched:
+        invoice_doc = unmatched.pop(0)
+    if not packing_doc and unmatched:
+        packing_doc = unmatched.pop(0)
+    if not lab_doc and unmatched:
+        lab_doc = unmatched.pop(0)
     if not lab_doc and documents_data:
-        lab_doc = documents_data[-1] if len(documents_data) > 1 else documents_data[0]
+        lab_doc = documents_data[-1]
 
-    inv_net_wt = invoice_doc.get("declared_net_weight_kg") or invoice_doc.get("total_net_weight_kg") if invoice_doc else None
-    pack_net_wt = packing_doc.get("total_net_weight_kg") or packing_doc.get("declared_net_weight_kg") if packing_doc else None
-    raw_hs = (invoice_doc or {}).get("hs_code") or (lab_doc or {}).get("declared_hs_code") or "09042211"
+    inv_net_wt = invoice_doc.get("declared_net_weight_kg") if invoice_doc else None
+    pack_net_wt = packing_doc.get("declared_net_weight_kg") if packing_doc else None
+
+    # If packing weight not directly on packing list, check if any other document had it
+    if pack_net_wt is None and len(documents_data) > 1:
+        alt_pack = [d for d in documents_data if d != invoice_doc and d.get("declared_net_weight_kg") is not None]
+        if alt_pack:
+            pack_net_wt = alt_pack[0].get("declared_net_weight_kg")
+
+    raw_hs = (invoice_doc or {}).get("hs_code") or (lab_doc or {}).get("hs_code") or (lab_doc or {}).get("declared_hs_code") or "09042211"
     batch_num = ((lab_doc or {}).get("batch_number") or 
                  ((invoice_doc or {}).get("batch_numbers") or ["GNT-24A"])[0])
 
@@ -184,28 +215,48 @@ async def audit_consignment(
 
     # Cross-document weight comparison
     discrepancy_kg = 0.0
+    variance_pct = 0.0
+    critical_blocks: List[str] = []
+    human_review_flags: List[str] = []
+
     weight_reconciliation = {
         "invoice_net_weight_kg": inv_net_wt,
         "packing_list_net_weight_kg": pack_net_wt,
         "discrepancy_kg": 0.0,
+        "variance_percentage": 0.0,
         "status": "PASS",
-        "notes": "Weights match within acceptable tolerance."
+        "notes": "Weights match within acceptable statutory tolerance."
     }
 
-    critical_blocks: List[str] = []
-    human_review_flags: List[str] = []
-
-    if inv_net_wt and pack_net_wt:
+    if inv_net_wt is not None and pack_net_wt is not None:
         discrepancy_kg = round(pack_net_wt - inv_net_wt, 2)
+        variance_pct = round((abs(discrepancy_kg) / inv_net_wt) * 100, 2) if inv_net_wt > 0 else 0.0
         weight_reconciliation["discrepancy_kg"] = discrepancy_kg
+        weight_reconciliation["variance_percentage"] = variance_pct
+
         if abs(discrepancy_kg) > 5.0:
             weight_reconciliation["status"] = "FAIL_DISCREPANCY"
             weight_reconciliation["notes"] = (
                 f"Net weight mismatch detected! Commercial Invoice declares {inv_net_wt:,.1f} kg, "
-                f"while Packing List confirms {pack_net_wt:,.1f} kg (Variance: {discrepancy_kg:,.1f} kg / "
-                f"{abs(discrepancy_kg)/inv_net_wt * 100:.2f}%). Will trigger Rotterdam port customs re-weighing."
+                f"whereas Packing List declares {pack_net_wt:,.1f} kg (Variance: {discrepancy_kg:,.1f} kg / "
+                f"{variance_pct}% shortfall). Triggers Rotterdam port customs weighbridge audit and Section 111/112 penalty."
             )
-            critical_blocks.append(f"Weight Discrepancy: {discrepancy_kg} kg variance between Invoice & Packing List.")
+            critical_blocks.append(f"Weight Discrepancy: {abs(discrepancy_kg):,.1f} kg variance between Invoice & Packing List.")
+        else:
+            weight_reconciliation["status"] = "PASS"
+            weight_reconciliation["notes"] = (
+                f"Weights reconciled successfully. Commercial Invoice ({inv_net_wt:,.1f} kg) and "
+                f"Packing List ({pack_net_wt:,.1f} kg) match within acceptable statutory tolerance (Variance: {abs(discrepancy_kg):,.1f} kg / {variance_pct}%)."
+            )
+    elif inv_net_wt is not None and pack_net_wt is None:
+        weight_reconciliation["status"] = "DATA_INCOMPLETE"
+        weight_reconciliation["notes"] = f"Commercial Invoice declares {inv_net_wt:,.1f} kg, but Packing List net weight was not detected in uploaded documents."
+    elif inv_net_wt is None and pack_net_wt is not None:
+        weight_reconciliation["status"] = "DATA_INCOMPLETE"
+        weight_reconciliation["notes"] = f"Packing List declares {pack_net_wt:,.1f} kg, but Commercial Invoice net weight was not detected in uploaded documents."
+    else:
+        weight_reconciliation["status"] = "DATA_INCOMPLETE"
+        weight_reconciliation["notes"] = "Net weight declarations were not detected in the uploaded documents."
 
     # 3. Chemical Residue & BLQ > MRL Sensitivity Evaluation
     analytes_raw: List[Dict[str, Any]] = []
@@ -301,17 +352,53 @@ async def audit_consignment(
     else:
         overall_status = "PASS"
 
-    # 4. Financial Risk Calculation (₹ INR)
-    # Demurrage at Rotterdam (€150/day * 14 days = €2,100 * ₹90 = ₹1,89,000)
-    demurrage_inr = 189000.0 if overall_status != "PASS" else 0.0
-    # Mandatory re-sampling & accredited re-testing via EIC/NABL (₹45,000)
-    retesting_inr = 45000.0 if (overall_status != "PASS" or human_review_flags) else 0.0
-    # Customs misdeclaration penalty (Section 111/112) for 450 kg discrepancy (approx ₹3,50,000)
-    customs_penalty_inr = 350000.0 if abs(discrepancy_kg) > 5.0 else 0.0
-    # Re-export / Cargo Destruction Liability (70% of cargo invoice value ₹66,60,000 = ₹46,62,000)
-    rejection_liability_inr = 4662000.0 if overall_status == "CRITICAL_BLOCK" else 0.0
+    # 4. Dynamic Financial Risk Calculation (₹ INR) from Real Consignment Documents
+    # Step A: Determine real invoice commercial value in INR
+    inv_val = (invoice_doc or {}).get("invoice_total_amount")
+    inv_curr = (invoice_doc or {}).get("invoice_currency") or "EUR"
+    rate_map = {"EUR": 90.0, "USD": 84.0, "GBP": 105.0, "INR": 1.0}
+    rate = rate_map.get(str(inv_curr).upper(), 90.0 if "€" in str(inv_curr) else (84.0 if "$" in str(inv_curr) else 1.0))
 
-    total_risk = demurrage_inr + retesting_inr + customs_penalty_inr + rejection_liability_inr
+    if inv_val and float(inv_val) > 0:
+        inv_value_inr = round(float(inv_val) * rate, 2)
+    elif inv_net_wt and float(inv_net_wt) > 0:
+        # Standard trade valuation benchmark: ₹360/kg for agricultural commodities, ₹250/kg for chemical/general cargo
+        inv_value_inr = round(float(inv_net_wt) * 360.0, 2)
+    else:
+        inv_value_inr = 5000000.0  # Conservative ₹50L standard container benchmark
+
+    # Step B: Container count for demurrage
+    all_containers = set()
+    for d in documents_data:
+        for c_no in d.get("container_numbers", []):
+            if c_no:
+                all_containers.add(c_no)
+    container_count = max(1, len(all_containers))
+
+    # Step C: Problematic / occluded analyte count for laboratory re-testing
+    problematic_analytes = sum(
+        1 for a in analyte_evals
+        if a.compliance_status != "PASS" or a.blq_trap_triggered or a.needs_human_review
+    )
+
+    # 1. Demurrage & detention at destination port (€150/day * 14 days per container = €2,100 * ₹90 = ₹1,89,000 / container)
+    demurrage_inr = round(container_count * 189000.0, 2) if overall_status != "PASS" else 0.0
+
+    # 2. Mandatory accredited re-sampling & re-testing (₹45,000 per contested parameter)
+    retesting_inr = round(max(1, problematic_analytes) * 45000.0, 2) if (overall_status != "PASS" or human_review_flags) else 0.0
+
+    # 3. Customs misdeclaration penalty (Section 111/112 Customs Act)
+    if abs(discrepancy_kg) > 5.0 and inv_net_wt and inv_net_wt > 0:
+        # Penalty under Section 112 is pegged to the value of the misdeclared/short-shipped goods
+        misdeclared_ratio = min(1.0, abs(discrepancy_kg) / float(inv_net_wt))
+        customs_penalty_inr = round(max(misdeclared_ratio * inv_value_inr, 100000.0), 2)
+    else:
+        customs_penalty_inr = 0.0
+
+    # 4. Cargo Rejection / Re-export / Destruction Liability (70% CIF consignment value)
+    rejection_liability_inr = round(0.70 * inv_value_inr, 2) if overall_status == "CRITICAL_BLOCK" else 0.0
+
+    total_risk = round(demurrage_inr + retesting_inr + customs_penalty_inr + rejection_liability_inr, 2)
 
     fin_breakdown = FinancialRiskBreakdown(
         demurrage_port_storage_inr=demurrage_inr,
@@ -330,15 +417,21 @@ async def audit_consignment(
 
     # Destination and Commodity context from documents
     dest_port = "Port of Rotterdam, Netherlands"
-    commodity_name = "Chili / Spices"
+    commodity_name = (
+        (invoice_doc or {}).get("commodity_description") or
+        (packing_doc or {}).get("commodity_description") or
+        (lab_doc or {}).get("commodity_description") or
+        "Consignment Cargo"
+    )
     for d in documents_data:
         text_d = d.get("_text", "")
-        m_p = re.search(r"Destination\s*(?:Port)?[:\s]+([^\n,]+(?:,\s*[^\n]+)?)", text_d, re.IGNORECASE)
+        m_p = re.search(r"Destination\s*(?:Port)?[:\s\n]+([^\n,]+(?:,\s*[^\n]+)?)", text_d, re.IGNORECASE)
         if m_p:
             dest_port = m_p.group(1).strip()
-        m_c = re.search(r"Commodity[:\s]+([^\n]+)", text_d, re.IGNORECASE)
-        if m_c:
-            commodity_name = m_c.group(1).strip()
+        if commodity_name == "Consignment Cargo":
+            m_c = re.search(r"(?:COMMODITY|Product\s*Name|Item\s*/\s*Description|Description\s*of\s*Goods)[:\s\n]+([^\n\r]+)", text_d, re.IGNORECASE)
+            if m_c:
+                commodity_name = m_c.group(1).strip()
 
     # Dynamic non-compliance findings generator
     findings_en = []
@@ -433,6 +526,7 @@ ACTION REQUIRED: Do not release export consignment batch {batch_num} until revis
         rendered_pages=rendered_pages,
         document_pages=document_pages,
         document_names=list(document_pages.keys()) if document_pages else list(rendered_pages.keys()),
+        commodity_description=commodity_name,
         extraction_source=next((d.get("_source") for d in documents_data if d.get("_source")), "LIVE: gemini-3.8-flash"),
     )
 

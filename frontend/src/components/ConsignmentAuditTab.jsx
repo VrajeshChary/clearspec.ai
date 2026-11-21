@@ -1241,7 +1241,11 @@ export default function ConsignmentAuditTab({ onAuditLoaded }) {
                   <div className="font-mono font-bold text-base text-slate-100">
                     {INR_FORMAT(risk.demurrage_port_storage_inr)}
                   </div>
-                  <div className="text-[10px] text-slate-500 font-mono">€150/day container detention</div>
+                  <div className="text-[10px] text-slate-500 font-mono">
+                    {risk.demurrage_port_storage_inr > 0
+                      ? `14d detention (€150/day = ${INR_FORMAT(risk.demurrage_port_storage_inr)})`
+                      : 'No port demurrage fees'}
+                  </div>
                 </div>
 
                 <div className="glass-well p-3 space-y-1">
@@ -1249,7 +1253,11 @@ export default function ConsignmentAuditTab({ onAuditLoaded }) {
                   <div className="font-mono font-bold text-base text-slate-100">
                     {INR_FORMAT(risk.re_testing_re_sampling_inr)}
                   </div>
-                  <div className="text-[10px] text-slate-500 font-mono">Secondary high-res LC-MS/MS</div>
+                  <div className="text-[10px] text-slate-500 font-mono">
+                    {risk.re_testing_re_sampling_inr > 0
+                      ? `Secondary high-res LC-MS/MS (${INR_FORMAT(risk.re_testing_re_sampling_inr)})`
+                      : 'All analytes verified'}
+                  </div>
                 </div>
 
                 <div className="glass-well p-3 space-y-1 border border-amber-500/30">
@@ -1257,7 +1265,11 @@ export default function ConsignmentAuditTab({ onAuditLoaded }) {
                   <div className="font-mono font-bold text-base text-amber-300">
                     {INR_FORMAT(risk.customs_penalty_inr)}
                   </div>
-                  <div className="text-[10px] text-amber-400/80 font-mono">Section 111/112 (450 kg shortfall)</div>
+                  <div className="text-[10px] text-amber-400/80 font-mono">
+                    {weight?.discrepancy_kg && Math.abs(weight.discrepancy_kg) > 5
+                      ? `Section 111/112 (${Math.abs(weight.discrepancy_kg).toLocaleString()} kg variance)`
+                      : 'Section 111/112 (No penalty applicable)'}
+                  </div>
                 </div>
 
                 <div className="glass-well p-3 space-y-1 border border-rose-500/30">
@@ -1265,7 +1277,11 @@ export default function ConsignmentAuditTab({ onAuditLoaded }) {
                   <div className="font-mono font-bold text-base text-rose-400">
                     {INR_FORMAT(risk.cargo_rejection_re_export_inr)}
                   </div>
-                  <div className="text-[10px] text-rose-400/80 font-mono">70% CIF consignment value</div>
+                  <div className="text-[10px] text-rose-400/80 font-mono">
+                    {risk.cargo_rejection_re_export_inr > 0
+                      ? `70% CIF value (${INR_FORMAT(Math.round(risk.cargo_rejection_re_export_inr / 0.70))})`
+                      : 'No destruction liability'}
+                  </div>
                 </div>
               </div>
             </div>
@@ -1303,10 +1319,12 @@ export default function ConsignmentAuditTab({ onAuditLoaded }) {
                     {weight.packing_list_net_weight_kg ? `${weight.packing_list_net_weight_kg.toLocaleString()} kg` : 'N/A'}
                   </span>
                 </div>
-                <div className="glass-well p-2.5 text-center border border-rose-500/40">
-                  <span className="text-[10px] text-rose-300 block font-mono">Variance Deficit</span>
-                  <span className="font-mono font-bold text-sm text-rose-400 mt-1 block">
-                    {weight.discrepancy_kg} kg ({weight.invoice_net_weight_kg ? ((-weight.discrepancy_kg / weight.invoice_net_weight_kg) * 100).toFixed(2) : '-2.43'}%)
+                <div className={`glass-well p-2.5 text-center ${weight.status === 'PASS' ? 'border border-emerald-500/40' : 'border border-rose-500/40'}`}>
+                  <span className={`text-[10px] block font-mono ${weight.status === 'PASS' ? 'text-emerald-300' : 'text-rose-300'}`}>
+                    {weight.status === 'PASS' ? 'Weights Matched' : 'Variance Deficit'}
+                  </span>
+                  <span className={`font-mono font-bold text-sm mt-1 block ${weight.status === 'PASS' ? 'text-emerald-400' : 'text-rose-400'}`}>
+                    {Math.abs(weight.discrepancy_kg || 0).toLocaleString()} kg ({weight.invoice_net_weight_kg ? ((-weight.discrepancy_kg / weight.invoice_net_weight_kg) * 100).toFixed(2) : '0.00'}%)
                   </span>
                 </div>
               </div>
