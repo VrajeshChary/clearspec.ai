@@ -9,7 +9,7 @@ from pydantic import BaseModel, Field
 
 import pymupdf as fitz
 
-from ..services.gemini_extractor import extract_document_data, CONFIDENCE_THRESHOLD
+from ..services.gemini_extractor import extract_document_data, parse_clean_weight, CONFIDENCE_THRESHOLD
 from ..services.unit_normalizer import normalize_unit_to_mg_kg, evaluate_blq_mrl_trap
 from ..services.eu_mrl_lookup import normalize_hs_code, lookup_chemical_mrl
 from ..schemas.unit_normalizer import ComplianceVerdict
@@ -76,6 +76,9 @@ class ConsignmentAuditResponse(BaseModel):
 async def audit_consignment(
     request: Request,
     files: Optional[List[UploadFile]] = File(None),
+    invoice_file: Optional[UploadFile] = File(None),
+    packing_file: Optional[UploadFile] = File(None),
+    lab_file: Optional[UploadFile] = File(None),
     use_sample: Optional[bool] = None,
     is_sample: Optional[bool] = None,
 ):
@@ -120,10 +123,23 @@ async def audit_consignment(
             print(f"PDF rendering error: {e}")
         return pages
 
+    # Check for actual uploaded file objects (guard against FastAPI File(...) param defaults)
+    slotted_candidates = [
+        (invoice_file, "COMMERCIAL_INVOICE"),
+        (packing_file, "PACKING_LIST"),
+        (lab_file, "LAB_REPORT")
+    ]
+    has_slotted_files = any(f and hasattr(f, "read") for f, _ in slotted_candidates)
+    has_list_files = bool(files and any(f and hasattr(f, "read") for f in files))
+
     # 1. Handle sample packet
-    if effective_sample or (not files and SAMPLE_PACKET_DIR.exists()):
-        sample_files = ["Commercial_Invoice_104.pdf", "Packing_List_104.pdf", "NABL_Lab_Report_104.pdf"]
-        for s_name in sample_files:
+    if effective_sample or (not has_list_files and not has_slotted_files and SAMPLE_PACKET_DIR.exists()):
+        sample_files = [
+            ("Commercial_Invoice_104.pdf", "COMMERCIAL_INVOICE"),
+            ("Packing_List_104.pdf", "PACKING_LIST"),
+            ("NABL_Lab_Report_104.pdf", "LAB_REPORT")
+        ]
+        for s_name, slot_role in sample_files:
             s_path = SAMPLE_PACKET_DIR / s_name
             if s_path.exists():
                 with open(s_path, "rb") as f:
@@ -137,9 +153,14 @@ async def audit_consignment(
                 data = extract_document_data(content, s_name)
                 data["_filename"] = s_name
                 data["_page_count"] = len(pages)
+                data["_assigned_slot"] = slot_role
+                data["document_type"] = slot_role
                 documents_data.append(data)
-    elif files:
-        for f in files:
+    elif has_slotted_files:
+        # Slot-specific uploads from upload cockpit
+        for f, slot_role in slotted_candidates:
+            if not f or not hasattr(f, "read"):
+                continue
             content = await f.read()
             clean_name = f.filename.split("/")[-1].split("\\")[-1]
             pages = _render_pdf_all_pages_base64(content)
@@ -148,9 +169,33 @@ async def audit_consignment(
                 document_pages[clean_name] = pages
                 for p_idx, p_data in enumerate(pages):
                     rendered_pages[f"{clean_name}::page_{p_idx}"] = p_data
-            data = extract_document_data(content, clean_name, mime_type=f.content_type or "application/pdf")
+            data = extract_document_data(content, clean_name, mime_type=getattr(f, "content_type", None) or "application/pdf")
             data["_filename"] = clean_name
             data["_page_count"] = len(pages)
+            data["_assigned_slot"] = slot_role
+            data["document_type"] = slot_role
+            documents_data.append(data)
+    elif has_list_files:
+        seen_filenames = set()
+        valid_files = [f for f in files if f and hasattr(f, "read")]
+        for f_idx, f in enumerate(valid_files):
+            clean_name = f.filename.split("/")[-1].split("\\")[-1]
+            if clean_name in seen_filenames:
+                continue
+            seen_filenames.add(clean_name)
+            content = await f.read()
+            pages = _render_pdf_all_pages_base64(content)
+            if pages:
+                rendered_pages[clean_name] = pages[0]
+                document_pages[clean_name] = pages
+                for p_idx, p_data in enumerate(pages):
+                    rendered_pages[f"{clean_name}::page_{p_idx}"] = p_data
+            data = extract_document_data(content, clean_name, mime_type=getattr(f, "content_type", None) or "application/pdf")
+            data["_filename"] = clean_name
+            data["_page_count"] = len(pages)
+            if len(valid_files) == 3:
+                canonical_roles = ["COMMERCIAL_INVOICE", "PACKING_LIST", "LAB_REPORT"]
+                data["_slot_hint"] = canonical_roles[f_idx]
             documents_data.append(data)
     else:
         raise HTTPException(status_code=400, detail="No files uploaded and sample packet not requested.")
@@ -160,31 +205,61 @@ async def audit_consignment(
 
     # 2. Intelligent Document Pairing & Cross-Document Check
     def is_inv(d):
-        t = str(d.get("document_type", "")).upper()
         fn = str(d.get("_filename", "")).lower()
+        if any(k in fn for k in ["pack", "pl", "pkg"]) or fn.startswith("2_"):
+            return False
+        if any(k in fn for k in ["lab", "cert", "coa", "nabl", "analysis", "report"]) or fn.startswith("3_"):
+            return False
+        if d.get("_assigned_slot") == "COMMERCIAL_INVOICE":
+            return True
+        t = str(d.get("document_type", "")).upper()
         txt = str(d.get("_text", "")).lower()
-        return "INVOICE" in t or "inv" in fn or "bill" in fn or "commercial invoice" in txt
+        return "INVOICE" in t or "inv" in fn or "bill" in fn or fn.startswith("1_") or "commercial invoice" in txt
 
     def is_pack(d):
-        t = str(d.get("document_type", "")).upper()
         fn = str(d.get("_filename", "")).lower()
+        if any(k in fn for k in ["lab", "cert", "coa", "nabl", "analysis", "report"]) or fn.startswith("3_"):
+            return False
+        if d.get("_assigned_slot") == "PACKING_LIST":
+            return True
+        t = str(d.get("document_type", "")).upper()
         txt = str(d.get("_text", "")).lower()
-        return "PACK" in t or "pack" in fn or "pl" in fn or "pkg" in fn or "packing list" in txt
+        return "PACK" in t or "pack" in fn or "pl" in fn or "pkg" in fn or fn.startswith("2_") or "packing list" in txt or "total packages loaded" in txt
 
     def is_lab(d):
+        if d.get("_assigned_slot") == "LAB_REPORT":
+            return True
         t = str(d.get("document_type", "")).upper()
         fn = str(d.get("_filename", "")).lower()
         txt = str(d.get("_text", "")).lower()
         return (
-            "LAB" in t or "CERT" in t or "COA" in t or
+            "LAB" in t or "CERT" in t or "COA" in t or fn.startswith("3_") or
             "lab" in fn or "test" in fn or "cert" in fn or "coa" in fn or "analysis" in fn or
             bool(d.get("chemical_rows") or d.get("analytes")) or
             "certificate of analysis" in txt or "test report" in txt
         )
 
-    invoice_doc = next((d for d in documents_data if is_inv(d)), None)
-    packing_doc = next((d for d in documents_data if is_pack(d) and d != invoice_doc), None)
-    lab_doc = next((d for d in documents_data if is_lab(d) and d not in (invoice_doc, packing_doc)), None)
+    # Slot assignment precedence
+    invoice_doc = next((d for d in documents_data if d.get("_assigned_slot") == "COMMERCIAL_INVOICE"), None)
+    packing_doc = next((d for d in documents_data if d.get("_assigned_slot") == "PACKING_LIST"), None)
+    lab_doc = next((d for d in documents_data if d.get("_assigned_slot") == "LAB_REPORT"), None)
+
+    # 3-File Canonical Order check (e.g. 1_..., 2_..., 3_...)
+    if not (invoice_doc and packing_doc and lab_doc) and len(documents_data) == 3:
+        d0, d1, d2 = documents_data[0], documents_data[1], documents_data[2]
+        fn0, fn1, fn2 = str(d0.get("_filename", "")).lower(), str(d1.get("_filename", "")).lower(), str(d2.get("_filename", "")).lower()
+        if (fn0.startswith("1_") or is_inv(d0)) and (fn1.startswith("2_") or is_pack(d1)) and (fn2.startswith("3_") or is_lab(d2)):
+            invoice_doc = d0
+            packing_doc = d1
+            lab_doc = d2
+
+    # Dynamic heuristics
+    if not invoice_doc:
+        invoice_doc = next((d for d in documents_data if is_inv(d)), None)
+    if not packing_doc:
+        packing_doc = next((d for d in documents_data if is_pack(d) and d != invoice_doc), None)
+    if not lab_doc:
+        lab_doc = next((d for d in documents_data if is_lab(d) and d not in (invoice_doc, packing_doc)), None)
 
     # Fallbacks for unmatched documents
     unmatched = [d for d in documents_data if d not in (invoice_doc, packing_doc, lab_doc)]
@@ -197,14 +272,47 @@ async def audit_consignment(
     if not lab_doc and documents_data:
         lab_doc = documents_data[-1]
 
-    inv_net_wt = invoice_doc.get("declared_net_weight_kg") if invoice_doc else None
-    pack_net_wt = packing_doc.get("declared_net_weight_kg") if packing_doc else None
+    inv_net_wt = parse_clean_weight(invoice_doc.get("declared_net_weight_kg")) if invoice_doc else None
+    pack_net_wt = parse_clean_weight(packing_doc.get("declared_net_weight_kg")) if packing_doc else None
+
+    # Resilient fallback scanning from document raw text
+    net_wt_regex_patterns = [
+        r"(?:Declared\s*Net\s*Weight|Total\s*Net\s*Weight|Consignment\s*Net\s*Wt|Total\s*Net\s*Wt|Net\s*Weight|Net\s*Wt|N\.?W\.?|Net\s*Qty|Net\s*Quantity)[^\d\n\r]{0,35}?([0-9,]+(?:\.\d+)?)\s*(MT|Metric\s*Ton(?:ne)?s?|Ton(?:ne)?s?|KGS?|KG|LBS?)\b",
+        r"(?:Declared\s*Net\s*Weight|Total\s*Net\s*Weight|Consignment\s*Net\s*Wt|Total\s*Net\s*Wt|Net\s*Weight|Net\s*Wt|N\.?W\.?|Net\s*Qty|Net\s*Quantity)[^\d\n\r]{0,35}?([0-9,]+(?:\.\d+)?)",
+        r"(?:Quantity|Qty)[^\d\n\r]{0,35}?([0-9,]+(?:\.\d+)?)\s*(MT|Metric\s*Ton(?:ne)?s?|Ton(?:ne)?s?|KGS?|KG)\b",
+        r"TOTALS?\b[^\n]*?([0-9,]+(?:\.\d+)?)\s*(?:kg|kgs)?[^\n]*?([0-9,]+(?:\.\d+)?)\s*(?:kg|kgs)",
+        r"([0-9,]+(?:\.\d+)?)\s*(?:KGS?|KG|MT)\s*(?:\(NET[^\)]*\)|NET\s*WEIGHT|NET\s*WT|NET)\b",
+    ]
+
+    if pack_net_wt is None and packing_doc and packing_doc.get("_text"):
+        for p in net_wt_regex_patterns:
+            m = re.search(p, packing_doc["_text"], re.IGNORECASE)
+            if m:
+                if "TOTAL" in p and len(m.groups()) >= 2 and m.group(2):
+                    pack_net_wt = parse_clean_weight(m.group(2))
+                else:
+                    unit_hint = m.group(2) if len(m.groups()) >= 2 and m.group(2) and not m.group(2).replace(",", "").replace(".", "").isdigit() else ""
+                    pack_net_wt = parse_clean_weight(f"{m.group(1)} {unit_hint}".strip())
+                if pack_net_wt:
+                    break
+
+    if inv_net_wt is None and invoice_doc and invoice_doc.get("_text"):
+        for p in net_wt_regex_patterns:
+            m = re.search(p, invoice_doc["_text"], re.IGNORECASE)
+            if m:
+                if "TOTAL" in p and len(m.groups()) >= 2 and m.group(2):
+                    inv_net_wt = parse_clean_weight(m.group(2))
+                else:
+                    unit_hint = m.group(2) if len(m.groups()) >= 2 and m.group(2) and not m.group(2).replace(",", "").replace(".", "").isdigit() else ""
+                    inv_net_wt = parse_clean_weight(f"{m.group(1)} {unit_hint}".strip())
+                if inv_net_wt:
+                    break
 
     # If packing weight not directly on packing list, check if any other document had it
     if pack_net_wt is None and len(documents_data) > 1:
-        alt_pack = [d for d in documents_data if d != invoice_doc and d.get("declared_net_weight_kg") is not None]
+        alt_pack = [d for d in documents_data if d != invoice_doc and parse_clean_weight(d.get("declared_net_weight_kg")) is not None]
         if alt_pack:
-            pack_net_wt = alt_pack[0].get("declared_net_weight_kg")
+            pack_net_wt = parse_clean_weight(alt_pack[0].get("declared_net_weight_kg"))
 
     raw_hs = (invoice_doc or {}).get("hs_code") or (lab_doc or {}).get("hs_code") or (lab_doc or {}).get("declared_hs_code") or "09042211"
     batch_num = ((lab_doc or {}).get("batch_number") or 

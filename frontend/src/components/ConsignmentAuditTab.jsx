@@ -745,6 +745,9 @@ export default function ConsignmentAuditTab({ onAuditLoaded }) {
     }
 
     const form = new FormData();
+    if (uploadedFiles.invoice) form.append('invoice_file', uploadedFiles.invoice);
+    if (uploadedFiles.packing) form.append('packing_file', uploadedFiles.packing);
+    if (uploadedFiles.lab) form.append('lab_file', uploadedFiles.lab);
     filesToUpload.forEach((f) => form.append('files', f));
     executeAudit(form, true);
   };
@@ -1120,10 +1123,10 @@ export default function ConsignmentAuditTab({ onAuditLoaded }) {
 
           {/* Quick Alert Badges */}
           <div className="flex flex-wrap lg:flex-col items-start lg:items-end gap-2 shrink-0 text-xs font-mono">
-            {weight && weight.discrepancy_kg > 0 ? (
+            {weight && (Math.abs(weight.discrepancy_kg || 0) > 5.0 || weight.status === 'FAIL_DISCREPANCY') ? (
               <div className="badge-critical px-3 py-1.5 rounded-lg flex items-center space-x-2">
                 <AlertOctagon className="w-4 h-4 text-rose-400 shrink-0" />
-                <span>{weight.discrepancy_kg} kg Net Weight Shortfall (Sec 111/112 Penalty)</span>
+                <span>{Math.abs(weight.discrepancy_kg || 0).toLocaleString()} kg Net Weight Shortfall (Sec 111/112 Penalty)</span>
               </div>
             ) : null}
             {findings.some((f) => f.blq_trap_triggered) ? (
@@ -1306,10 +1309,12 @@ export default function ConsignmentAuditTab({ onAuditLoaded }) {
                   className={`text-xs px-2.5 py-0.5 rounded-full font-mono font-bold ${
                     weight.status === 'PASS'
                       ? 'badge-pass'
-                      : 'badge-critical'
+                      : weight.status === 'FAIL_DISCREPANCY'
+                      ? 'badge-critical'
+                      : 'badge-warning'
                   }`}
                 >
-                  {weight.status === 'PASS' ? 'WEIGHTS MATCH' : 'DISCREPANCY DETECTED'}
+                  {weight.status === 'PASS' ? 'WEIGHTS MATCH' : weight.status === 'FAIL_DISCREPANCY' ? 'DISCREPANCY DETECTED' : 'DATA INCOMPLETE'}
                 </span>
               </div>
 
@@ -1326,12 +1331,16 @@ export default function ConsignmentAuditTab({ onAuditLoaded }) {
                     {weight.packing_list_net_weight_kg ? `${weight.packing_list_net_weight_kg.toLocaleString()} kg` : 'N/A'}
                   </span>
                 </div>
-                <div className={`glass-well p-2.5 text-center ${weight.status === 'PASS' ? 'border border-emerald-500/40' : 'border border-rose-500/40'}`}>
-                  <span className={`text-[10px] block font-mono ${weight.status === 'PASS' ? 'text-emerald-300' : 'text-rose-300'}`}>
-                    {weight.status === 'PASS' ? 'Weights Matched' : 'Variance Deficit'}
+                <div className={`glass-well p-2.5 text-center ${weight.status === 'PASS' ? 'border border-emerald-500/40' : weight.status === 'FAIL_DISCREPANCY' ? 'border border-rose-500/40' : 'border border-amber-500/40'}`}>
+                  <span className={`text-[10px] block font-mono ${weight.status === 'PASS' ? 'text-emerald-300' : weight.status === 'FAIL_DISCREPANCY' ? 'text-rose-300' : 'text-amber-300'}`}>
+                    {weight.status === 'PASS' ? 'Weights Matched' : weight.status === 'FAIL_DISCREPANCY' ? 'Variance Deficit' : 'Status'}
                   </span>
-                  <span className={`font-mono font-bold text-sm mt-1 block ${weight.status === 'PASS' ? 'text-emerald-400' : 'text-rose-400'}`}>
-                    {Math.abs(weight.discrepancy_kg || 0).toLocaleString()} kg ({weight.invoice_net_weight_kg ? ((-weight.discrepancy_kg / weight.invoice_net_weight_kg) * 100).toFixed(2) : '0.00'}%)
+                  <span className={`font-mono font-bold text-sm mt-1 block ${weight.status === 'PASS' ? 'text-emerald-400' : weight.status === 'FAIL_DISCREPANCY' ? 'text-rose-400' : 'text-amber-400'}`}>
+                    {weight.status === 'PASS'
+                      ? '0 kg (0.00%)'
+                      : weight.status === 'FAIL_DISCREPANCY'
+                      ? `${Math.abs(weight.discrepancy_kg || 0).toLocaleString()} kg (${Math.abs(weight.variance_percentage || (weight.invoice_net_weight_kg ? ((weight.discrepancy_kg / weight.invoice_net_weight_kg) * 100) : 0)).toFixed(2)}%)`
+                      : 'Review Required'}
                   </span>
                 </div>
               </div>

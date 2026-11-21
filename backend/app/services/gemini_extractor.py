@@ -67,6 +67,40 @@ def compute_sha256(data: bytes) -> str:
     return hashlib.sha256(data).hexdigest()
 
 
+def parse_clean_weight(val: Any) -> Optional[float]:
+    """
+    Normalizes weight strings, numbers, and units (MT, Metric Tonnes, Tons, kg, kgs, lbs)
+    into a canonical float representing kilograms (kg).
+    """
+    if val is None:
+        return None
+    if isinstance(val, (int, float)):
+        return round(float(val), 2) if val > 0 else None
+    
+    val_str = str(val).strip()
+    if not val_str or val_str.lower() in ("null", "none", "nan", "n/a", "-", "undefined"):
+        return None
+    
+    is_mt = bool(re.search(r"\b(mt|metric\s*ton(?:ne)?s?|ton(?:ne)?s?)\b", val_str, re.IGNORECASE))
+    is_lbs = bool(re.search(r"\b(lbs?|pounds?)\b", val_str, re.IGNORECASE))
+    
+    # Extract number (e.g. 18,050.00 or 18050)
+    m = re.search(r"([0-9]{1,3}(?:,[0-9]{3})*(?:\.[0-9]+)?|[0-9]+(?:\.[0-9]+)?)", val_str)
+    if not m:
+        return None
+    
+    clean_num_str = m.group(1).replace(",", "")
+    try:
+        num = float(clean_num_str)
+        if is_mt:
+            num = num * 1000.0
+        elif is_lbs:
+            num = num * 0.453592
+        return round(num, 2) if num > 0 else None
+    except Exception:
+        return None
+
+
 def get_demo_cache() -> Dict[str, Any]:
     """Loads static demo cache if present."""
     if DEMO_CACHE_PATH.exists():
@@ -249,60 +283,107 @@ def parse_tables_with_pymupdf(file_bytes: bytes, filename: str) -> Dict[str, Any
                         "bounding_box": bbox,
                     }
                     chemical_rows.append(chem_item)
+            else:
+                # Packing List & Consignment Table weight parsing
+                net_col_idx = None
+                gross_col_idx = None
+                qty_col_idx = None
+
+                for c_i, h_name in enumerate(header_row):
+                    if any(term in h_name for term in ["net wt", "net weight", "n.w", "nw", "net qty", "net quantity", "net (kg)", "net(kg)"]):
+                        net_col_idx = c_i
+                    elif net_col_idx is None and "net" in h_name and not any(term in h_name for term in ["price", "amount", "rate"]):
+                        net_col_idx = c_i
+
+                    if any(term in h_name for term in ["gross wt", "gross weight", "g.w", "gw", "gross (kg)", "gross(kg)"]):
+                        gross_col_idx = c_i
+                    elif gross_col_idx is None and "gross" in h_name:
+                        gross_col_idx = c_i
+
+                    if any(term in h_name for term in ["quantity", "qty", "billed qty"]):
+                        qty_col_idx = c_i
+
+                candidate_rows = []
+                for r_idx, row in enumerate(extracted[1:], start=1):
+                    row_str = " ".join(str(c or "") for c in row).lower()
+                    if any(term in row_str for term in ["total", "totals", "grand total", "sum"]):
+                        candidate_rows.append((True, row))
+                    elif row:
+                        candidate_rows.append((False, row))
+
+                sorted_rows = sorted(candidate_rows, key=lambda x: 0 if x[0] else 1)
+                for is_total, row in sorted_rows:
+                    if net_col_idx is not None and net_col_idx < len(row):
+                        val = parse_clean_weight(row[net_col_idx])
+                        if val and (not result["declared_net_weight_kg"] or is_total):
+                            result["declared_net_weight_kg"] = val
+
+                    if gross_col_idx is not None and gross_col_idx < len(row):
+                        gval = parse_clean_weight(row[gross_col_idx])
+                        if gval and (not result["declared_gross_weight_kg"] or is_total):
+                            result["declared_gross_weight_kg"] = gval
+
+                    if result["declared_net_weight_kg"] is None and qty_col_idx is not None and qty_col_idx < len(row):
+                        qval = parse_clean_weight(row[qty_col_idx])
+                        if qval:
+                            result["declared_net_weight_kg"] = qval
 
     doc.close()
 
     # Document Type Classification
     full_lower = full_text.lower()
-    if any(k in clean_fn for k in ["invoice", "inv", "bill"]) or any(k in full_lower for k in ["commercial invoice", "tax invoice", "proforma invoice", "invoice no"]):
-        result["document_type"] = "COMMERCIAL_INVOICE"
-    elif any(k in clean_fn for k in ["pack", "pl", "pkg"]) or any(k in full_lower for k in ["packing list", "package nos", "total packages loaded", "tare weight"]):
+    # Strict filename precedence
+    if any(k in clean_fn for k in ["pack", "pl", "pkg"]) or clean_fn.startswith("2_"):
         result["document_type"] = "PACKING_LIST"
-    elif any(k in clean_fn for k in ["lab", "cert", "coa", "test", "nabl", "analysis", "report"]) or chemical_rows or any(k in full_lower for k in ["certificate of analysis", "test report", "nabl", "analytical report", "lc-ms/ms"]):
+    elif any(k in clean_fn for k in ["lab", "cert", "coa", "nabl", "analysis", "report"]) or clean_fn.startswith("3_"):
         result["document_type"] = "LAB_REPORT"
+    elif any(k in clean_fn for k in ["invoice", "inv", "bill"]) or clean_fn.startswith("1_"):
+        result["document_type"] = "COMMERCIAL_INVOICE"
+    else:
+        # Content-based classification (packing list checked before invoice to avoid invoice reference trap)
+        if any(k in full_lower for k in ["packing list", "package nos", "total packages loaded", "tare weight"]):
+            result["document_type"] = "PACKING_LIST"
+        elif any(k in full_lower for k in ["certificate of analysis", "test report", "nabl", "analytical report", "lc-ms/ms"]) or chemical_rows:
+            result["document_type"] = "LAB_REPORT"
+        elif any(k in full_lower for k in ["commercial invoice", "tax invoice", "proforma invoice", "invoice no"]):
+            result["document_type"] = "COMMERCIAL_INVOICE"
 
-    # Robust Net Weight Extraction (supporting MT, Tons, KG, LBS, and comma formatting)
-    net_wt_patterns = [
-        r"(?:Declared\s*Net\s*Weight|Total\s*Net\s*Weight|Consignment\s*Net\s*Wt|Net\s*Weight|Net\s*Wt|N\.?W\.?)[:\s\n]+([0-9,]+(?:\.\d+)?)\s*(MT|Metric\s*Ton(?:ne)?s?|Ton(?:ne)?s?|KGS?|KG|LBS?)\b",
-        r"(?:Quantity|Qty)[:\s\n]+([0-9,]+(?:\.\d+)?)\s*(MT|Metric\s*Ton(?:ne)?s?|Ton(?:ne)?s?|KGS?|KG)\b",
-        r"([0-9,]+(?:\.\d+)?)\s*(?:MT|Metric\s*Ton(?:ne)?s?)\s*\(([0-9,]+(?:\.\d+)?)\s*KGS?\)",
-        r"(?:Declared\s*Net\s*Weight|Total\s*Net\s*Weight|Net\s*Weight|Net\s*Wt)[:\s\n]+([0-9,]+(?:\.\d+)?)",
-    ]
-    for pat in net_wt_patterns:
-        m_wt = re.search(pat, full_text, re.IGNORECASE)
-        if m_wt:
-            val_str = m_wt.group(2) if len(m_wt.groups()) >= 2 and m_wt.group(2) and m_wt.group(2).replace(",", "").replace(".", "").isdigit() else m_wt.group(1)
-            try:
-                val = float(val_str.replace(",", ""))
-                unit_str = (m_wt.group(2) if len(m_wt.groups()) >= 2 and m_wt.group(2) and not m_wt.group(2).replace(",", "").replace(".", "").isdigit() else "").lower()
-                if any(u in unit_str for u in ["mt", "ton", "tonne"]):
-                    val = val * 1000.0
-                elif "lbs" in unit_str:
-                    val = val * 0.453592
-                result["declared_net_weight_kg"] = round(val, 2)
-                break
-            except Exception:
-                pass
+    # Robust Net Weight Extraction if not already found in tables
+    if not result["declared_net_weight_kg"]:
+        net_wt_patterns = [
+            r"(?:Declared\s*Net\s*Weight|Total\s*Net\s*Weight|Consignment\s*Net\s*Wt|Total\s*Net\s*Wt|Net\s*Weight|Net\s*Wt|N\.?W\.?|Net\s*Qty|Net\s*Quantity)[^\d\n\r]{0,35}?([0-9,]+(?:\.\d+)?)\s*(MT|Metric\s*Ton(?:ne)?s?|Ton(?:ne)?s?|KGS?|KG|LBS?)\b",
+            r"(?:Declared\s*Net\s*Weight|Total\s*Net\s*Weight|Consignment\s*Net\s*Wt|Total\s*Net\s*Wt|Net\s*Weight|Net\s*Wt|N\.?W\.?|Net\s*Qty|Net\s*Quantity)[^\d\n\r]{0,35}?([0-9,]+(?:\.\d+)?)",
+            r"(?:Quantity|Qty)[^\d\n\r]{0,35}?([0-9,]+(?:\.\d+)?)\s*(MT|Metric\s*Ton(?:ne)?s?|Ton(?:ne)?s?|KGS?|KG)\b",
+            r"TOTALS?\b[^\n]*?([0-9,]+(?:\.\d+)?)\s*(?:kg|kgs)?[^\n]*?([0-9,]+(?:\.\d+)?)\s*(?:kg|kgs)",
+            r"([0-9,]+(?:\.\d+)?)\s*(?:KGS?|KG|MT)\s*(?:\(NET[^\)]*\)|NET\s*WEIGHT|NET\s*WT|NET)\b",
+        ]
+        for pat in net_wt_patterns:
+            m_wt = re.search(pat, full_text, re.IGNORECASE)
+            if m_wt:
+                if "TOTAL" in pat and len(m_wt.groups()) >= 2 and m_wt.group(2):
+                    val = parse_clean_weight(m_wt.group(2))
+                else:
+                    unit_hint = m_wt.group(2) if len(m_wt.groups()) >= 2 and m_wt.group(2) and not m_wt.group(2).replace(",", "").replace(".", "").isdigit() else ""
+                    val = parse_clean_weight(f"{m_wt.group(1)} {unit_hint}".strip())
+                if val:
+                    result["declared_net_weight_kg"] = val
+                    break
 
-    # Robust Gross Weight Extraction
-    gross_wt_patterns = [
-        r"(?:Declared\s*Gross\s*Weight|Total\s*Gross\s*Weight|Gross\s*Weight|Gross\s*Wt|G\.?W\.?)[:\s\n]+([0-9,]+(?:\.\d+)?)\s*(MT|Metric\s*Ton(?:ne)?s?|Ton(?:ne)?s?|KGS?|KG|LBS?)\b",
-        r"(?:Gross\s*Weight|Gross\s*Wt|G\.?W\.?)[:\s\n]+([0-9,]+(?:\.\d+)?)",
-    ]
-    for pat in gross_wt_patterns:
-        m_gwt = re.search(pat, full_text, re.IGNORECASE)
-        if m_gwt:
-            try:
-                val = float(m_gwt.group(1).replace(",", ""))
-                unit_str = (m_gwt.group(2) if len(m_gwt.groups()) >= 2 and m_gwt.group(2) else "").lower()
-                if any(u in unit_str for u in ["mt", "ton", "tonne"]):
-                    val = val * 1000.0
-                elif "lbs" in unit_str:
-                    val = val * 0.453592
-                result["declared_gross_weight_kg"] = round(val, 2)
-                break
-            except Exception:
-                pass
+    # Robust Gross Weight Extraction if not already found in tables
+    if not result["declared_gross_weight_kg"]:
+        gross_wt_patterns = [
+            r"(?:Declared\s*Gross\s*Weight|Total\s*Gross\s*Weight|Gross\s*Weight|Gross\s*Wt|G\.?W\.?)[^\d\n\r]{0,35}?([0-9,]+(?:\.\d+)?)\s*(MT|Metric\s*Ton(?:ne)?s?|Ton(?:ne)?s?|KGS?|KG|LBS?)\b",
+            r"(?:Declared\s*Gross\s*Weight|Total\s*Gross\s*Weight|Gross\s*Weight|Gross\s*Wt|G\.?W\.?)[^\d\n\r]{0,35}?([0-9,]+(?:\.\d+)?)",
+            r"TOTALS?\b[^\n]*?([0-9,]+(?:\.\d+)?)\s*(?:kg|kgs)",
+        ]
+        for pat in gross_wt_patterns:
+            m_gwt = re.search(pat, full_text, re.IGNORECASE)
+            if m_gwt:
+                unit_hint = m_gwt.group(2) if len(m_gwt.groups()) >= 2 and m_gwt.group(2) and not m_gwt.group(2).replace(",", "").replace(".", "").isdigit() else ""
+                val = parse_clean_weight(f"{m_gwt.group(1)} {unit_hint}".strip())
+                if val:
+                    result["declared_gross_weight_kg"] = val
+                    break
 
     # Invoice Commercial Value & Currency
     inv_val_patterns = [
@@ -479,6 +560,7 @@ Do NOT output markdown backticks or explanations. Output pure JSON only.
                         parsed["_source"] = f"{m_candidate.upper().replace('-', '_')}_LIVE"
                         parsed["_filename"] = clean_name
                         parsed["_sha256"] = compute_sha256(file_bytes)
+                        parsed["_text"] = baseline.get("_text", "")
 
                         # Dynamically compute bounding boxes from real PDF via PyMuPDF
                         doc = fitz.open(stream=file_bytes, filetype="pdf")
@@ -514,10 +596,20 @@ Do NOT output markdown backticks or explanations. Output pure JSON only.
                         parsed["chemical_rows"] = norm_rows
                         parsed["analytes"] = norm_rows
 
+                        # Clean and normalize weights
+                        if parsed.get("declared_net_weight_kg") is not None:
+                            parsed["declared_net_weight_kg"] = parse_clean_weight(parsed["declared_net_weight_kg"])
+                        if parsed.get("declared_gross_weight_kg") is not None:
+                            parsed["declared_gross_weight_kg"] = parse_clean_weight(parsed["declared_gross_weight_kg"])
+
                         # Robustly combine with deterministic baseline fallbacks
-                        if not parsed.get("document_type") or parsed["document_type"] == "OTHER":
-                            if baseline.get("document_type") and baseline["document_type"] != "OTHER":
+                        if baseline.get("document_type") in ("PACKING_LIST", "COMMERCIAL_INVOICE", "LAB_REPORT"):
+                            if not parsed.get("document_type") or parsed["document_type"] == "OTHER":
                                 parsed["document_type"] = baseline["document_type"]
+                            elif baseline["document_type"] == "PACKING_LIST" and parsed["document_type"] != "PACKING_LIST":
+                                parsed["document_type"] = "PACKING_LIST"
+                            elif baseline["document_type"] == "LAB_REPORT" and parsed["document_type"] != "LAB_REPORT":
+                                parsed["document_type"] = "LAB_REPORT"
 
                         if not parsed.get("declared_net_weight_kg") and baseline.get("declared_net_weight_kg"):
                             parsed["declared_net_weight_kg"] = baseline["declared_net_weight_kg"]
@@ -547,6 +639,7 @@ Do NOT output markdown backticks or explanations. Output pure JSON only.
         cached_result["_source"] = "DEMO_CACHE_OFFLINE"
         cached_result["_filename"] = clean_name
         cached_result["_sha256"] = compute_sha256(file_bytes)
+        cached_result["_text"] = baseline.get("_text", "")
         c_rows = cached_result.get("analytes") or cached_result.get("chemical_rows") or []
         norm_cached = []
         for r in c_rows:
@@ -569,6 +662,10 @@ Do NOT output markdown backticks or explanations. Output pure JSON only.
             })
         cached_result["chemical_rows"] = norm_cached
         cached_result["analytes"] = norm_cached
+
+        cached_result["declared_net_weight_kg"] = parse_clean_weight(cached_result.get("declared_net_weight_kg"))
+        cached_result["declared_gross_weight_kg"] = parse_clean_weight(cached_result.get("declared_gross_weight_kg"))
+
         if not cached_result.get("declared_net_weight_kg") and baseline.get("declared_net_weight_kg"):
             cached_result["declared_net_weight_kg"] = baseline["declared_net_weight_kg"]
         if not cached_result.get("declared_gross_weight_kg") and baseline.get("declared_gross_weight_kg"):
